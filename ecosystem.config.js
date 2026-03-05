@@ -1,66 +1,44 @@
 module.exports = {
   apps: [
     { 
-      name: "Tuyul-1", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "dotpeaxel", API_KEY: "mr_live_U2yiRuK46ZC2rB9xcz4ORKDv3u4n_j2G" }
+      name: "Tuyul-16_peaxel15", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel15", API_KEY: "mr_live_TeJ1YFw_3AWaEpX9r8o0zqY1AaAh2nv8" }
     },
     { 
-      name: "Tuyul-2", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel", API_KEY: "mr_live_NWIeDJOAgPt7rmNVFcuVZu9QFcydmCYI" }
+      name: "Tuyul-17_peaxel16", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel16", API_KEY: "mr_live_PBpLFDcH0-nOZaHzpHl2zmohIlHyLYa6" }
     },
     { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel2", API_KEY: "mr_live_Ax2zvzirGueozKHGpdOA6m0hgnbOcVpx" }
+      name: "Tuyul-18_peaxel17", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel17", API_KEY: "mr_live_t5Gm-8H-q1XRPU5vTVdR3JmRTHSvacF0" }
     },
     { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel3", API_KEY: "mr_live_3WYDHqvJgpEVpilKGGZ_pww_u7rcY_GF" }
+      name: "Tuyul-19_peaxel18", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel18", API_KEY: "mr_live_zSfB9sprx9IEqkP3qgWcEpSCMnquN6sT" }
     },
     { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel4", API_KEY: "mr_live_1cEZm2NYLdMK4Rx7YTvFwe6xuj7qaCvD" }
+      name: "Tuyul-20_peaxel19", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel19", API_KEY: "mr_live_x5smLvUteVzDxgiwXN7bwOubX9iqar0u" }
     },
     { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel5", API_KEY: "mr_live_qS9FQmELIfLOF8ZTxAQNh0EVOPTKkBta" }
+      name: "Tuyul-21_peaxel20", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel20", API_KEY: "mr_live_lj0Yp3v-AJfuZMmcwU-FwcwCl8ohDaaL" }
     },
     { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel6", API_KEY: "mr_live_xysPJejffFUcpkmC_XoizRe-nmi_9NMX" }
+      name: "Tuyul-22_peaxel21", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel21", API_KEY: "mr_live_DWajUEXWttFywZG3v4lPV-vsHKHq4MER" }
     },
     { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel7", API_KEY: "mr_live_HIO4r0hedXU8f8RDZsHWjMwKDdBHRiMc" }
+      name: "Tuyul-23_peaxel22", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel22", API_KEY: "mr_live_HwU-27OJh63ywdj2zjcKdf2V7tKcAZZM" }
     },
     { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel8", API_KEY: "mr_live_b-7oSSJMfkIQWwY_wgoJFGi4eiYGUvUb" }
+      name: "Tuyul-24_peaxel23", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel23", API_KEY: "mr_live_kbQwJ1CH0Zj3sCYjCDXMx2TyC6lHGyXk" }
     },
     { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel9", API_KEY: "mr_live_ojydX_TbwQ45eMM5LoQqX7YMh9QKE2gb" }
-    },
-    { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel10", API_KEY: "mr_live_7yaS41eZg6p_n9KFN1IWxrAAYyIhqgYR" }
-    },
-    { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel11", API_KEY: "mr_live_DlKKxmkkS88mHWe9ZIKD2y9lnCSyXlla" }
-    },
-    { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel12", API_KEY: "mr_live_rChzkEZB5A86yS3pbEqlHg2l9tnyYdOp" }
-    },
-    { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel13", API_KEY: "mr_live_q49JtrVtsQU83nxkYCKc0nXfgwKGfkgc" }
-    },
-    { 
-      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel14", API_KEY: "mr_live_SxesBQwOiK9nkxykZWsnprCdyBxjfbTl" }
-    },
-    // ... DAN SETERUSNYA SAMPAI BOT KE-15 ...
-    // Tinggal copy-paste blok di atas ke bawah
+      name: "Tuyul-25_peaxel24", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel24", API_KEY: "mr_live_r1dScqyFvFTXySE9tcvlxmi0y8v-Pm2f" }
+    }
   ]
 };
