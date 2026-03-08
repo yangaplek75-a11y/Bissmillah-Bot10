@@ -1,26 +1,6 @@
 module.exports = {
   apps: [
     { 
-      name: "Tuyul-16_peaxel15", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel15", API_KEY: "mr_live_TeJ1YFw_3AWaEpX9r8o0zqY1AaAh2nv8" }
-    },
-    { 
-      name: "Tuyul-17_peaxel16", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel16", API_KEY: "mr_live_PBpLFDcH0-nOZaHzpHl2zmohIlHyLYa6" }
-    },
-    { 
-      name: "Tuyul-18_peaxel17", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel17", API_KEY: "mr_live_t5Gm-8H-q1XRPU5vTVdR3JmRTHSvacF0" }
-    },
-    { 
-      name: "Tuyul-19_peaxel18", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel18", API_KEY: "mr_live_zSfB9sprx9IEqkP3qgWcEpSCMnquN6sT" }
-    },
-    { 
-      name: "Tuyul-20_peaxel19", script: "bot.py", interpreter: "python3",
-      env: { BOT_NAME: "peaxel19", API_KEY: "mr_live_x5smLvUteVzDxgiwXN7bwOubX9iqar0u" }
-    },
-    { 
       name: "Tuyul-21_peaxel20", script: "bot.py", interpreter: "python3",
       env: { BOT_NAME: "peaxel20", API_KEY: "mr_live_lj0Yp3v-AJfuZMmcwU-FwcwCl8ohDaaL" }
     },
@@ -42,3 +22,4 @@ module.exports = {
     }
   ]
 };
+
