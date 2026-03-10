@@ -238,6 +238,10 @@ def decide_action(state, bot_memory):
     self_data = state.get("self", {})
     try: my_hp_val = int(self_data.get("hp", 100))
     except: my_hp_val = 100
+    
+    # 🔥 TARIK DATA TENAGA (EP) 🔥
+    try: my_ep_val = int(self_data.get("ep", 10))
+    except: my_ep_val = 10
         
     my_id = self_data.get("id")
     region = state.get("currentRegion", {})
@@ -256,6 +260,11 @@ def decide_action(state, bot_memory):
     if "dz_memory" not in bot_memory: bot_memory["dz_memory"] = set()
     if "pdz_memory" not in bot_memory: bot_memory["pdz_memory"] = set()
     if "sampah_memory" not in bot_memory: bot_memory["sampah_memory"] = set()
+    if "last_hp" not in bot_memory: bot_memory["last_hp"] = 100
+
+    # CEK LUKA TIBA-TIBA (ANTI SAMSAK)
+    hp_loss = bot_memory["last_hp"] - my_hp_val
+    bot_memory["last_hp"] = my_hp_val
 
     if current_region_id != bot_memory.get("last_region_id"):
         bot_memory["taunted_agents"] = set()
@@ -263,7 +272,7 @@ def decide_action(state, bot_memory):
 
     game_data = state.get("game", {})
     raw_pdz = state.get("pendingDeathzones", []) + state.get("pendingDeathZones", []) + game_data.get("pendingDeathzones", [])
-    raw_dz = state.get("deathzones", []) + state.get("deathZones", []) + game_data.get("deathzones", [])
+    raw_dz = state.get("deathzones", []) + state.get("deathzones", []) + game_data.get("deathzones", [])
 
     for pdz in raw_pdz: bot_memory["pdz_memory"].add(str(pdz.get("id", pdz)).lower())
     for dz in raw_dz: bot_memory["dz_memory"].add(str(dz.get("id", dz)).lower())
@@ -382,7 +391,16 @@ def decide_action(state, bot_memory):
     barang_di_area = cari_barang_di_tanah(state, region)
     barang_di_area.sort(key=sort_loot_priority, reverse=True)
 
-    def aksi_move(pesan_kustom="🚪 Melipir cari aman..."):
+    # 🔥 FUNGSI AKSI YANG SUDAH DILENGKAPI CEK EP & ANTI-BUNTU 🔥
+    def aksi_move(pesan_kustom="🚪 Melipir cari aman...", wajib_aman=False, target_pasti=None):
+        if my_ep_val < 1: 
+            smart_print(bot_memory, f"[{BOT_NAME}] 💤 EP Habis! Terpaksa tidur dulu (Rest)!")
+            return {"type": "rest"}
+            
+        if target_pasti and target_pasti in adjacent_ids:
+            smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom}")
+            return {"type": "move", "regionId": target_pasti}
+
         if not adjacent_regions: return None 
             
         pintu_aman = []
@@ -411,52 +429,57 @@ def decide_action(state, bot_memory):
             if len(pilihan_baru) > 0: 
                 target_id = cari_pintu_strategis(pilihan_baru, region_dict, my_hp_val < 60)
             else: 
-                # Cuma kepepet baru balik ke ruangan sebelumnya
                 ruangan_sebelumnya = bot_memory["visited_path"][-1] if len(bot_memory["visited_path"]) > 0 else None
                 pilihan_darurat = [r for r in pintu_aman if r != ruangan_sebelumnya]
                 target_id = cari_pintu_strategis(pilihan_darurat if len(pilihan_darurat) > 0 else pintu_aman, region_dict, my_hp_val < 60)
                 
             smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom}")
-        elif len(pintu_blind) > 0:
-            target_id = random.choice(pintu_blind)
-            smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom}")
-        elif len(pintu_pending) > 0:
-            target_id = random.choice(pintu_pending)
-            smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom}")
+        elif not wajib_aman:
+            if len(pintu_blind) > 0:
+                target_id = random.choice(pintu_blind)
+                smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom} (Pintu Gelap)")
+            elif len(pintu_pending) > 0:
+                target_id = random.choice(pintu_pending)
+                smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom} (Pintu Pending DZ)")
 
         if target_id:
             if target_id in bot_memory["visited_path"]: 
                 bot_memory["visited_path"].remove(target_id)
             bot_memory["visited_path"].append(target_id)
             
-            # 🔥 ANTI MUTER-MUTER: Ingat 20 ruangan terakhir! 🔥
             if len(bot_memory["visited_path"]) > 20: 
                 bot_memory["visited_path"].pop(0)
             return {"type": "move", "regionId": target_id}
             
         return None 
         
-    def aksi_serang(target_id, target_type): return {"type": "attack", "targetId": target_id, "targetType": target_type}
+    def aksi_serang(target_id, target_type): 
+        if my_ep_val < 2:
+            smart_print(bot_memory, f"[{BOT_NAME}] 💤 EP cuma {my_ep_val}! Istirahat (Rest) ambil napas buat nyerang!")
+            return {"type": "rest"}
+        return {"type": "attack", "targetId": target_id, "targetType": target_type}
+
     def aksi_pungut(item_data): 
         item_id, _ = ekstrak_info_item(item_data)
         return {"type": "pickup", "itemId": item_id} 
-    def aksi_pakai_item(item_id): return {"type": "use_item", "itemId": item_id} 
+    def aksi_pakai_item(item_id): 
+        if my_ep_val < 1: return {"type": "rest"}
+        return {"type": "use_item", "itemId": item_id} 
     def aksi_equip(item_id): return {"type": "equip", "itemId": item_id}
-    def aksi_interact(fasilitas_id): return {"type": "interact", "interactableId": fasilitas_id}
+    def aksi_interact(fasilitas_id): 
+        if my_ep_val < 1: return {"type": "rest"}
+        return {"type": "interact", "interactableId": fasilitas_id}
     def aksi_buang(item_id, pesan_kustom="Membuang barang..."): 
         smart_print(bot_memory, f"[{BOT_NAME}] 🗑️ {pesan_kustom}")
         return {"type": "drop", "itemId": item_id}
 
     # ================== INSTING KILAT ==================
     if best_inv_w_id:
-        if tangan_kosong:
-            smart_print(bot_memory, f"[{BOT_NAME}] ✨ UPGRADE SENJATA! Pakai [{best_inv_w_name}]!")
-            return aksi_equip(best_inv_w_id)
-        elif best_inv_w_score > equipped_w_score:
+        if tangan_kosong or best_inv_w_score > equipped_w_score:
             smart_print(bot_memory, f"[{BOT_NAME}] ✨ UPGRADE SENJATA! Pakai [{best_inv_w_name}]!")
             return aksi_equip(best_inv_w_id)
 
-    # 🔥 AUTO-CLEAN (SAPU JAGAT) DENGAN PENGECUALIAN BARANG UNIK 🔥
+    # 🔥 AUTO-CLEAN (SMART INVENTORY) 🔥
     skor_maksimal_kita = max(equipped_w_score, best_inv_w_score)
     for item in inventory:
         is_eq = isinstance(item, dict) and item.get("isEquipped", False)
@@ -464,16 +487,36 @@ def decide_action(state, bot_memory):
             i_id, i_name = ekstrak_info_item(item)
             if i_id in bot_memory["sampah_memory"]: continue 
             
-            # Peta, Radio, Megaphone TIDAK AKAN PERNAH DIBUANG biar gak error server!
             if is_valid_weapon(i_name, item):
                 skor_tas = get_weapon_score(i_name)
+                # Kalo skor tas DI BAWAH senjata andalan kita (Misal pegang Pistol skor 40, Dagger skor 10), BUANG Dagger-nya!
                 if skor_tas < skor_maksimal_kita:
                     bot_memory["sampah_memory"].add(i_id) 
-                    return aksi_buang(i_id, f"AUTO-CLEAN: Buang {i_name} usang!")
+                    return aksi_buang(i_id, f"AUTO-CLEAN: Tas penuh, buang {i_name} rongsok!")
+
+    # ================== REFLEKS ANTI-SAMSAK & STUN ==================
+    if hp_loss > 0 and jumlah_pengeroyok == 0:
+        sniper = None
+        for m in musuh_player:
+            if m.get("jarak") == 1:
+                sniper = m
+                break
+        if sniper and weapon_range == 0: 
+            if my_hp_val > 60:
+                smart_print(bot_memory, f"[{BOT_NAME}] 😡 DITEMBAK DARI JAUH! MAJU TABRAK {sniper.get('name')}!")
+                aksi = aksi_move("Nyerbu lokasi penembak!", target_pasti=str(sniper.get("regionId")).lower())
+                if aksi: return aksi
+            else:
+                smart_print(bot_memory, f"[{BOT_NAME}] 😱 DITEMBAK SILUMAN! LARI!!!")
+                aksi = aksi_move("Menghindari tembakan!", wajib_aman=True)
+                if aksi: return aksi
+        elif not sniper:
+            smart_print(bot_memory, f"[{BOT_NAME}] 👻 DITEMBAK GAIB! LARI KABUR!")
+            aksi = aksi_move("Menghindari hantu sniper!", wajib_aman=True)
+            if aksi: return aksi
 
     # ================== PUNGUT BARANG ==================
     if len(barang_di_area) > 0:
-        # 🔥 DARURAT SENJATA: Kalau tangan kosong, cari senjata dulu! 🔥
         if tangan_kosong:
             for b in barang_di_area:
                 bid, bnm = ekstrak_info_item(b)
@@ -481,12 +524,10 @@ def decide_action(state, bot_memory):
                     smart_print(bot_memory, f"[{BOT_NAME}] 🚨 DARURAT SENJATA! Sikat {bnm}!")
                     return aksi_pungut(b)
 
-        # Kalau udah aman, looting normal
         for item_terbaik in barang_di_area:
             _, nama_barang = ekstrak_info_item(item_terbaik)
             nm_low = nama_barang.lower()
             
-            # Cek limit 1 barang unit
             if "megaphone" in nm_low and punya_megaphone: continue
             if "radio" in nm_low and punya_radio: continue
             if "map" in nm_low and punya_map: continue
@@ -494,7 +535,6 @@ def decide_action(state, bot_memory):
             tas_penuh = True if len(inventory) >= 10 else False
             is_koin = True if "moltz" in nm_low or "coin" in nm_low else False
             
-            # Prioritas Vulture Koin
             if is_koin:
                 smart_print(bot_memory, f"[{BOT_NAME}] 💰 MATA DUITAN! Ada {nama_barang}, SIKAT!")
                 return aksi_pungut(item_terbaik)
@@ -510,11 +550,10 @@ def decide_action(state, bot_memory):
     # ================== SURVIVAL & HEALING DEWA ==================
     is_trapped_in_dz = False
     if is_death_zone_now or is_pending_dz_now:
-        aksi_lari = aksi_move("🚨 ZONA MERAH/BAHAYA! Evakuasi Segera!")
+        aksi_lari = aksi_move("🚨 ZONA MERAH/BAHAYA! Evakuasi Segera!", wajib_aman=True)
         if aksi_lari: return aksi_lari
         else: is_trapped_in_dz = True
 
-    # Heal diutamakan sebelum mikirin musuh
     batas_heal = 95 if is_trapped_in_dz else 80 
     if my_hp_val < batas_heal:
         if id_medical:
@@ -527,14 +566,14 @@ def decide_action(state, bot_memory):
             smart_print(bot_memory, f"[{BOT_NAME}] 🚑 Minum Potion! (HP:{my_hp_val})")
             return aksi_pakai_item(id_potion)
 
-    # 🔥 PROTOKOL KARTEL PEAXEL 🔥
+    # 🔥 PROTOKOL KARTEL PEAXEL (ANTI BUNUH DIRI) 🔥
     if jumlah_pengeroyok >= 3 and jumlah_pengeroyok > kekuatan_tim:
-        aksi = aksi_move(f"🚨 Musuh {jumlah_pengeroyok} orang, geng kita cuma {kekuatan_tim}. KABURRR!")
+        aksi = aksi_move(f"🚨 Musuh {jumlah_pengeroyok} orang, geng kita cuma {kekuatan_tim}. KABURRR!", wajib_aman=True)
         if aksi: return aksi
         else: smart_print(bot_memory, f"[{BOT_NAME}] 🛑 ZONA AKHIR BUNTU! TAWURAN SINI KAU!")
 
     if jumlah_pengeroyok >= 2 and jumlah_pengeroyok > kekuatan_tim and my_hp_val < 75:
-        aksi = aksi_move(f"🚨 Kalah jumlah geng & HP Bocor! Mundur taktis dulu!")
+        aksi = aksi_move(f"🚨 Kalah jumlah geng & HP Bocor! Mundur taktis dulu!", wajib_aman=True)
         if aksi: return aksi
 
     # 🔥 SMART COMBAT LOGIC (NINJA ASSASSIN) 🔥
@@ -546,12 +585,12 @@ def decide_action(state, bot_memory):
         target_region = target.get("regionId")
         
         if tangan_kosong:
-            aksi = aksi_move("Tangan kosong! Melarikan diri cari senjata...")
+            aksi = aksi_move("Tangan kosong! Melarikan diri cari senjata...", wajib_aman=True)
             if aksi: return aksi
             return aksi_serang(target.get("id"), "agent")
 
         if jarak_musuh == 0:
-            if jumlah_teman > 0:
+            if len(teman_sekamar) > 0: # 🔥 FIX PENYAKIT KOMA PEAXEL26 🔥
                 smart_print(bot_memory, f"[{BOT_NAME}] 🤝 GANKING MAFIA! Bantu saudara hajar {nama_musuh}!")
                 return aksi_serang(target.get("id"), "agent")
             elif hp_musuh <= 40:
@@ -561,7 +600,7 @@ def decide_action(state, bot_memory):
                 smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Eksekusi {nama_musuh} (HP:{hp_musuh})!")
                 return aksi_serang(target.get("id"), "agent")
             else:
-                aksi = aksi_move(f"⚠️ {nama_musuh} lebih sehat (HP:{hp_musuh}). Melipir ah, main aman!")
+                aksi = aksi_move(f"⚠️ {nama_musuh} lebih sehat (HP:{hp_musuh}). Melipir ah, main aman!", wajib_aman=True)
                 if aksi: return aksi
                 smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Mentok! Terpaksa duel mati-matian lawan {nama_musuh}!")
                 return aksi_serang(target.get("id"), "agent")
@@ -573,24 +612,24 @@ def decide_action(state, bot_memory):
             else:
                 if hp_musuh <= 30 and my_hp_val > 70:
                     smart_print(bot_memory, f"[{BOT_NAME}] 🏃‍♂️ Kejar {nama_musuh} yg lagi sekarat!")
-                    if str(target_region).lower() in bot_memory["visited_path"]: 
-                        bot_memory["visited_path"].remove(str(target_region).lower())
-                    bot_memory["visited_path"].append(str(target_region).lower())
-                    return {"type": "move", "regionId": str(target_region).lower()}
+                    return aksi_move("Kejar musuh sekarat", target_pasti=str(target_region).lower())
 
-    # 🔥 FARMING MONSTER AMAN 🔥
+    # 🔥 PREMAN PASAR (BARBAR FARMING MONSTER TANGAN KOSONG) 🔥
     if musuh_monster_terlemah:
         target = musuh_monster_terlemah
         nama_musuh = target.get("name", "Monster")
         jarak_musuh = target.get("jarak", 0)
         target_region = target.get("regionId")
         
-        if not tangan_kosong and my_hp_val >= 80:
-            if jarak_musuh > 0 and weapon_range == 0:
-                smart_print(bot_memory, f"[{BOT_NAME}] 🏃‍♂️ Cari {nama_musuh} buat farming koin!")
-                return {"type": "move", "regionId": str(target_region).lower()}
-            else:
-                smart_print(bot_memory, f"[{BOT_NAME}] 👹 Bantai {nama_musuh} buat Koin!")
+        if my_hp_val > 60 and jumlah_pengeroyok == 0 and not is_death_zone_now and not is_pending_dz_now:
+            if jarak_musuh == 0:
+                smart_print(bot_memory, f"[{BOT_NAME}] 🥊 PREMAN PASAR! Bantai {nama_musuh}!")
+                return aksi_serang(target.get("id"), "monster")
+            elif jarak_musuh > 0 and weapon_range == 0:
+                smart_print(bot_memory, f"[{BOT_NAME}] 🏃‍♂️ Samperin {nama_musuh} buat dipalak!")
+                return aksi_move("Maju ke ruangan monster", target_pasti=str(target_region).lower())
+            elif jarak_musuh > 0 and weapon_range > 0:
+                smart_print(bot_memory, f"[{BOT_NAME}] 🎯 Tembak {nama_musuh} buat farming!")
                 return aksi_serang(target.get("id"), "monster")
 
     if id_supply:
@@ -599,7 +638,8 @@ def decide_action(state, bot_memory):
 
     aksi_akhir = aksi_move("🕵️ Patroli cari duit & tempat aman...")
     if aksi_akhir: return aksi_akhir
-        
+    
+    if my_ep_val < 1: return {"type": "rest"} 
     return {"type": "explore"}
 
 # ================== RADAR & LAPORAN ==================
@@ -608,6 +648,7 @@ def print_live_status(state, game_id):
     region = state.get("currentRegion", {})
     
     hp = self_data.get('hp', '?')
+    ep = self_data.get('ep', '?') # Tambah laporan Tenaga (EP)
     tas = len(self_data.get('inventory', []))
     loc = region.get('name', '?')
     
@@ -619,7 +660,7 @@ def print_live_status(state, game_id):
         if "fist" not in nm.lower() and "none" not in nm.lower(): 
             senjata_info = f"{nm} 🗡️"
             
-    print(f"\n[🎮 GAME {game_id[-5:]}] [{BOT_NAME}] | HP:{hp} | Tas:{tas}/10 | Senj: {senjata_info} | Lokasi:{loc}")
+    print(f"\n[🎮 GAME {game_id[-5:]}] [{BOT_NAME}] | HP:{hp} | EP:{ep} | Tas:{tas}/10 | Senj: {senjata_info} | Lokasi:{loc}")
 
 def cetak_laporan_kemenangan(state):
     self_data = state.get("self", {})
@@ -743,7 +784,8 @@ def main():
         "last_state": None, 
         "group1_cd_end": 0, 
         "last_print_time": 0, 
-        "last_log_msg": ""
+        "last_log_msg": "",
+        "last_hp": 100
     }
 
     while True:
@@ -790,7 +832,7 @@ def main():
                 res = send_action(game_id, agent_id, action_payload)
                 
                 if res and res.get("success"):
-                    if act_type in ["pickup", "equip", "talk", "whisper", "drop"]: 
+                    if act_type in ["pickup", "equip", "talk", "whisper", "drop", "rest"]: 
                         time.sleep(0.2) 
                     else: 
                         bot_memory["group1_cd_end"] = time.time() + TURN_DELAY
