@@ -18,7 +18,7 @@ PRIVATE_KEY = os.environ.get("PRIVATE_KEY", "KOSONG")
 # 🚨 KUNCI AI BUAT NGEJEBOL CAPTCHA DEV 🚨
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "KOSONG") 
 
-# 🔥 UPDATE: PAKAI TOPENG GOOGLE CHROME BIAR GAK KENA 403 FIREWALL 🔥
+# 🔥 PAKAI TOPENG GOOGLE CHROME BIAR GAK KENA 403 FIREWALL 🔥
 HEADERS = {
     "Content-Type": "application/json",
     "X-API-Key": API_KEY,
@@ -98,7 +98,6 @@ def get_waiting_premium_game():
             try:
                 response = requests.get(url, headers=HEADERS, timeout=5) 
                 
-                # 🔥 UPDATE: PENANGANAN ERROR 403 PINTAR 🔥
                 if response.status_code == 403:
                     print(f"⚠️ [{BOT_NAME}] Ditahan Firewall (403)! Istirahat 3 detik biar gak dicurigai...")
                     time.sleep(3)
@@ -131,7 +130,7 @@ def get_waiting_premium_game():
 # 🔥 AI CAPTCHA SOLVER 🔥
 def solve_captcha_ai(challenge_text, metadata):
     print(f"🤖 [{BOT_NAME}] Menganalisa Captcha dari Dev: {challenge_text}")
-    if GEMINI_API_KEY == "KOSONG":
+    if GEMINI_API_KEY == "KOSONG" or not GEMINI_API_KEY:
         print("⚠️ GEMINI_API_KEY belum diisi! AI tidak bisa menjawab Captcha!")
         return "Aku gak tau"
         
@@ -141,6 +140,11 @@ def solve_captcha_ai(challenge_text, metadata):
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
         res = requests.post(url, headers={"Content-Type": "application/json"}, json=payload).json()
+        
+        if "error" in res:
+            print(f"💥 Error dari Gemini API: {res['error']}")
+            return "Error AI"
+            
         jawaban = res.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '').strip()
         print(f"✅ [{BOT_NAME}] Jawaban Captcha Ditemukan: {jawaban}")
         return jawaban
@@ -154,22 +158,25 @@ def join_paid_game(game_id, private_key):
         jawaban_ai = None
         challenge_id = None
         
-        res_captcha = requests.post(f"{BASE_URL}/games/{game_id}/captcha/challenge", headers=HEADERS)
+        # 🔥 UPDATE MUTLAK: TAMBAHKAN json={} AGAR REQUEST TIDAK DITOLAK SERVER 🔥
+        res_captcha = requests.post(f"{BASE_URL}/games/{game_id}/captcha/challenge", headers=HEADERS, json={})
         
         if res_captcha.status_code == 200 and res_captcha.json().get("success"):
             print(f"🚨 [{BOT_NAME}] Room ini dijaga Captcha! Memanggil AI...")
             data_captcha = res_captcha.json()["data"]
-            challenge_id = data_captcha["challenge_id"]
-            challenge_text = data_captcha["challenge_text"]
+            challenge_id = data_captcha.get("challenge_id")
+            challenge_text = data_captcha.get("challenge_text")
             metadata = data_captcha.get("metadata", {})
 
             jawaban_ai = solve_captcha_ai(challenge_text, metadata)
         else:
-            print(f"ℹ️ [{BOT_NAME}] Info: Tidak ada Captcha aktif di room ini. Terobos aja!")
+            # 🔥 UPDATE MUTLAK: TAMPILKAN ISI ERROR JIKA SERVER GAGAL NGASIH SOAL 🔥
+            print(f"ℹ️ [{BOT_NAME}] Info: Gagal ambil soal Captcha. Server membalas: {res_captcha.status_code} - {res_captcha.text}")
+            print(f"ℹ️ [{BOT_NAME}] Mencoba menerobos tanpa Captcha...")
 
         res_msg = requests.get(f"{BASE_URL}/games/{game_id}/join-paid/message", headers=HEADERS)
         if not res_msg.json().get("success"):
-            print(f"⚠️ Gagal dapat kontrak VIP: {res_msg.json().get('error', {}).get('message')}")
+            print(f"⚠️ [{BOT_NAME}] Gagal dapat kontrak VIP: {res_msg.json().get('error', {}).get('message')}")
             return None
 
         eip712_data = res_msg.json()["data"]
@@ -200,10 +207,11 @@ def join_paid_game(game_id, private_key):
                 if g["gameId"] == game_id:
                     return g["agentId"]
         else:
-            print(f"❌ Gagal Join (Mungkin Captcha Salah/Saldo Kurang): {res_join.json().get('error', {}).get('message')}")
+            # 🔥 UPDATE MUTLAK: TAMPILKAN ERROR ASLI DARI DEV 🔥
+            print(f"❌ [{BOT_NAME}] Gagal Join (Mungkin Captcha Salah/Saldo Kurang): {res_join.text}")
             
     except Exception as e:
-        print(f"💥 Error saat penembusan VIP: {e}")
+        print(f"💥 [{BOT_NAME}] Error saat penembusan VIP: {e}")
     return None
 
 def start_game(game_id):
