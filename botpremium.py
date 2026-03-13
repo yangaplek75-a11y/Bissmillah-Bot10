@@ -89,13 +89,19 @@ def get_waiting_premium_game():
     MAX_PERCOBAAN = 10 
     print(f"🔍 [{get_waktu()}] [{BOT_NAME}] Radar VIP SNIPER Aktif! Mencari room PAID/PREMIUM...")
     
-    # 🔥 CEK DUA JALUR (HOT API & REGULER) 🔥
     urls_to_scan = [f"{BASE_URL}/games/hot", f"{BASE_URL}/games?status=waiting"]
     
     for attempt in range(1, MAX_PERCOBAAN + 1):
         for url in urls_to_scan:
             try:
-                response = requests.get(url, timeout=5) 
+                # 🔥 FIX 1: TAMBAH HEADERS BIAR GAK DIKIRA PENGUSUP 🔥
+                response = requests.get(url, headers=HEADERS, timeout=5) 
+                
+                # 🔥 FIX 2: BONGKAR ERROR GAIB 🔥
+                if response.status_code != 200:
+                    print(f"⚠️ [{BOT_NAME}] Server nolak Radar ({url[-9:]})! Kode: {response.status_code}")
+                    continue
+                    
                 res = response.json()
                 
                 if res.get("success") and res.get("data"):
@@ -104,14 +110,14 @@ def get_waiting_premium_game():
                         entry_type = game.get("entryType", "").lower()
                         nama_game = game.get("name", "").lower()
                         
-                        if status_game == "waiting" and (entry_type != "free" or "premium" in nama_game):
+                        if status_game == "waiting" and ("premium" in nama_game or "paid" in entry_type):
                             print(f"✅ [{get_waktu()}] [{BOT_NAME}] Nemu Room VIP: {game.get('name')}")
                             return game["id"]
             except Exception as e:
-                pass
+                print(f"💥 Error Radar: {e}")
             
         if attempt < MAX_PERCOBAAN:
-            delay = random.uniform(0.2, 0.7) 
+            delay = random.uniform(0.5, 1.2) 
             time.sleep(delay) 
             
     print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room VIP kosong. Ganti radar!")
@@ -980,3 +986,4 @@ if __name__ == "__main__":
         print(f"🛑 [{BOT_NAME}] Operasi VIP selesai. Melapor kembali ke Markas (run_mafia)...")
     except Exception as e:
         print(f"💥 [{BOT_NAME}] Crash sistem: {e}")
+
