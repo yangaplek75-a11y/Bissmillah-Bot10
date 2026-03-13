@@ -132,7 +132,7 @@ def join_paid_game(game_id, private_key):
         signed_message = account.sign_typed_data(full_message=eip712_data)
         signature = "0x" + signed_message.signature.hex()
 
-        # 3. KIRIM PAYLOAD (Ini yang kurang di gambar Bos!)
+        # 3. KIRIM PAYLOAD
         payload = {
             "deadline": str(deadline),
             "signature": signature
@@ -472,23 +472,33 @@ def decide_action(state, bot_memory):
                 
         target_id = None
         
-        if len(pintu_aman) > 0:
-            pilihan_baru = [r for r in pintu_aman if r not in bot_memory["visited_path"]]
-            if len(pilihan_baru) > 0: 
-                target_id = cari_pintu_strategis(pilihan_baru, region_dict, my_hp_val < 60)
-            else: 
-                ruangan_sebelumnya = bot_memory["visited_path"][-1] if len(bot_memory["visited_path"]) > 0 else None
-                pilihan_darurat = [r for r in pintu_aman if r != ruangan_sebelumnya]
-                target_id = cari_pintu_strategis(pilihan_darurat if len(pilihan_darurat) > 0 else pintu_aman, region_dict, my_hp_val < 60)
-                
-            smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom}")
-        elif not wajib_aman:
-            if len(pintu_blind) > 0:
-                target_id = random.choice(pintu_blind)
-                smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom} (Pintu Gelap)")
-            elif len(pintu_pending) > 0:
-                target_id = random.choice(pintu_pending)
-                smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom} (Pintu Pending DZ)")
+        # 🔥 OVERRIDE MUTLAK: Kalau di DeathZone, BODO AMAT SAMA KEAMANAN, TEROBOS PINTU APA AJA!
+        if is_death_zone_now:
+            if len(pintu_aman) > 0: target_id = random.choice(pintu_aman)
+            elif len(pintu_blind) > 0: target_id = random.choice(pintu_blind)
+            elif len(pintu_pending) > 0: target_id = random.choice(pintu_pending)
+            elif len(adjacent_ids) > 0: target_id = random.choice(adjacent_ids) # Terobos aja api lainnya!
+            
+            if target_id:
+                smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom}")
+        else:
+            if len(pintu_aman) > 0:
+                pilihan_baru = [r for r in pintu_aman if r not in bot_memory["visited_path"]]
+                if len(pilihan_baru) > 0: 
+                    target_id = cari_pintu_strategis(pilihan_baru, region_dict, my_hp_val < 60)
+                else: 
+                    ruangan_sebelumnya = bot_memory["visited_path"][-1] if len(bot_memory["visited_path"]) > 0 else None
+                    pilihan_darurat = [r for r in pintu_aman if r != ruangan_sebelumnya]
+                    target_id = cari_pintu_strategis(pilihan_darurat if len(pilihan_darurat) > 0 else pintu_aman, region_dict, my_hp_val < 60)
+                    
+                smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom}")
+            elif not wajib_aman:
+                if len(pintu_blind) > 0:
+                    target_id = random.choice(pintu_blind)
+                    smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom} (Pintu Gelap)")
+                elif len(pintu_pending) > 0:
+                    target_id = random.choice(pintu_pending)
+                    smart_print(bot_memory, f"[{BOT_NAME}] 🏃 {pesan_kustom} (Pintu Pending DZ)")
 
         if target_id:
             if target_id in bot_memory["visited_path"]: 
@@ -525,7 +535,42 @@ def decide_action(state, bot_memory):
         smart_print(bot_memory, f"[{BOT_NAME}] 🗑️ {pesan_kustom}")
         return bungkus_aksi({"type": "drop", "itemId": item_id}, reasoning, planned)
 
-    # ================== INSTING KILAT ==================
+    # ================== CEK COOLDOWN ==================
+    sisa_cd = bot_memory.get("group1_cd_end", 0) - time.time()
+    if sisa_cd > 0: return {"type": "WAITING_CD"}
+
+    # ================== SURVIVAL (PRIORITAS 1: KABUR DARI DEATHZONE MUTLAK) ==================
+    is_trapped_in_dz = False
+    if is_death_zone_now or is_pending_dz_now:
+        # Bodo amat mau gelap atau terang, yang penting kabur!
+        aksi_lari = aksi_move("🚨 ZONA MERAH/BAHAYA VIP! Evakuasi Segera!", wajib_aman=False, reasoning="VIP Death Zone detected.", planned="Evacuating immediately to protect the ticket.")
+        if aksi_lari: return aksi_lari
+        else: is_trapped_in_dz = True
+
+    # ================== HEALING DARURAT (PRIORITAS 2) ==================
+    batas_heal = 95 if is_trapped_in_dz else 80 
+    if my_hp_val < batas_heal:
+        if id_medical:
+            smart_print(bot_memory, f"[{BOT_NAME}] 🏥 Pakai Medical Facility VIP!")
+            return aksi_interact(id_medical, "Low HP and medical facility nearby.", "Receiving VIP outpatient care.")
+        elif id_bandage:
+            smart_print(bot_memory, f"[{BOT_NAME}] 🚑 Suntik Obat VIP! (HP:{my_hp_val})")
+            return aksi_pakai_item(id_bandage)
+        elif id_potion:
+            smart_print(bot_memory, f"[{BOT_NAME}] 🚑 Minum Potion VIP! (HP:{my_hp_val})")
+            return aksi_pakai_item(id_potion)
+
+    # ================== PROTOKOL MENTAL BAJA (ANTI BUNUH DIRI) ==================
+    if jumlah_pengeroyok >= 3 and jumlah_pengeroyok > kekuatan_tim:
+        aksi = aksi_move(f"🚨 Musuh {jumlah_pengeroyok} orang, geng kita cuma {kekuatan_tim}. KABURRR!", wajib_aman=True, reasoning="Ganked by premium enemies.", planned="Retreating to reform.")
+        if aksi: return aksi
+        else: smart_print(bot_memory, f"[{BOT_NAME}] 🛑 ZONA AKHIR VIP BUNTU! TAWURAN SINI KAU!")
+
+    if jumlah_pengeroyok >= 2 and jumlah_pengeroyok > kekuatan_tim and my_hp_val < 75:
+        aksi = aksi_move(f"🚨 Kalah jumlah geng & HP Bocor! Mundur taktis dulu!", wajib_aman=True, reasoning="Critical HP and outnumbered.", planned="Avoiding an unnecessary death.")
+        if aksi: return aksi
+
+    # ================== INSTING KILAT (UPGRADE SENJATA) ==================
     if best_inv_w_id:
         if tangan_kosong or best_inv_w_score > equipped_w_score:
             smart_print(bot_memory, f"[{BOT_NAME}] ✨ UPGRADE SENJATA VIP! Pakai [{best_inv_w_name}]!")
@@ -566,7 +611,45 @@ def decide_action(state, bot_memory):
             aksi = aksi_move("Menghindari hantu sniper!", wajib_aman=True, reasoning="Invisible threat.", planned="Fleeing the danger zone.")
             if aksi: return aksi
 
-    # ================== PUNGUT BARANG ==================
+    # ================== SMART COMBAT LOGIC VIP (NINJA ASSASSIN & GANKING) ==================
+    if musuh_player_terlemah:
+        target = musuh_player_terlemah
+        hp_musuh = target.get("hp", 100)
+        nama_musuh = target.get("name", "Player")
+        jarak_musuh = target.get("jarak", 0)
+        target_region = target.get("regionId")
+        
+        if tangan_kosong:
+            aksi = aksi_move("Tangan kosong! Melarikan diri cari senjata VIP...", wajib_aman=True, reasoning="Bare-handed in VIP is a death sentence.", planned="Searching for a weapon before retaliating.")
+            if aksi: return aksi
+            return aksi_serang(target.get("id"), "agent", "Cornered in VIP.", "Fighting back with bare fists.")
+
+        if jarak_musuh == 0:
+            if len(teman_sekamar) > 0:
+                smart_print(bot_memory, f"[{BOT_NAME}] 🤝 GANKING VIP! Bantu saudara hajar {nama_musuh} bersama {teman_sekamar[0].get('name')}!")
+                return aksi_serang(target.get("id"), "agent", "Found a brother-in-arms.", "Ganking the enemy with the Peaxel Cartel.")
+            elif hp_musuh <= 40:
+                smart_print(bot_memory, f"[{BOT_NAME}] 🦅 VULTURE MODE! Nyampah kill VIP {nama_musuh} (HP:{hp_musuh})!")
+                return aksi_serang(target.get("id"), "agent", "Enemy is weak and dying.", "Ending their suffering to secure the kill.")
+            elif my_hp_val > 85 or hp_musuh <= my_hp_val:
+                smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Eksekusi Taruhan: {nama_musuh} (HP:{hp_musuh})!")
+                return aksi_serang(target.get("id"), "agent", "High stakes mechanical duel.", "Confident in winning this premium 1v1.")
+            else:
+                aksi = aksi_move(f"⚠️ {nama_musuh} lebih sehat (HP:{hp_musuh}). Melipir ah, main aman!", wajib_aman=True, reasoning="Opponent has more HP.", planned="Playing smart, protecting the 100 Moltz entry fee.")
+                if aksi: return aksi
+                smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Mentok! Terpaksa duel mati-matian lawan {nama_musuh} di VIP!")
+                return aksi_serang(target.get("id"), "agent", "Cornered with no way out.", "Fighting to the last drop of blood for 8000 Moltz.")
+
+        elif jarak_musuh > 0:
+            if weapon_range > 0:
+                smart_print(bot_memory, f"[{BOT_NAME}] 🎯 SNIPER VIP! Tembak {nama_musuh} dari jauh!")
+                return aksi_serang(target.get("id"), "agent", "Wielding a ranged weapon.", "Utilizing distance to chip away enemy HP.")
+            else:
+                if hp_musuh <= 30 and my_hp_val > 70:
+                    smart_print(bot_memory, f"[{BOT_NAME}] 🏃‍♂️ Kejar {nama_musuh} yg lagi sekarat!")
+                    return aksi_move("Kejar musuh VIP sekarat", target_pasti=str(target_region).lower(), reasoning="Dying whale is fleeing.", planned="Hunting them down for premium loot.")
+
+    # ================== PUNGUT BARANG (DIPINDAH KE BAWAH BIAR GAK JADI PRIORITAS SAAT PERANG/DZ) ==================
     if len(barang_di_area) > 0:
         if tangan_kosong:
             for b in barang_di_area:
@@ -598,78 +681,7 @@ def decide_action(state, bot_memory):
                 smart_print(bot_memory, f"[{BOT_NAME}] 🎒 Ambil Barang VIP: {nama_barang}!")
                 return aksi_pungut(item_terbaik)
 
-    # ================== CEK COOLDOWN ==================
-    sisa_cd = bot_memory.get("group1_cd_end", 0) - time.time()
-    if sisa_cd > 0: return {"type": "WAITING_CD"}
-
-    # ================== SURVIVAL & HEALING DEWA ==================
-    is_trapped_in_dz = False
-    if is_death_zone_now or is_pending_dz_now:
-        aksi_lari = aksi_move("🚨 ZONA MERAH/BAHAYA VIP! Evakuasi Segera!", wajib_aman=True, reasoning="VIP Death Zone detected.", planned="Evacuating immediately to protect the ticket.")
-        if aksi_lari: return aksi_lari
-        else: is_trapped_in_dz = True
-
-    batas_heal = 95 if is_trapped_in_dz else 80 
-    if my_hp_val < batas_heal:
-        if id_medical:
-            smart_print(bot_memory, f"[{BOT_NAME}] 🏥 Pakai Medical Facility VIP!")
-            return aksi_interact(id_medical, "Low HP and medical facility nearby.", "Receiving VIP outpatient care.")
-        elif id_bandage:
-            smart_print(bot_memory, f"[{BOT_NAME}] 🚑 Suntik Obat VIP! (HP:{my_hp_val})")
-            return aksi_pakai_item(id_bandage)
-        elif id_potion:
-            smart_print(bot_memory, f"[{BOT_NAME}] 🚑 Minum Potion VIP! (HP:{my_hp_val})")
-            return aksi_pakai_item(id_potion)
-
-    # 🔥 PROTOKOL MENTAL BAJA (ANTI BUNUH DIRI) 🔥
-    if jumlah_pengeroyok >= 3 and jumlah_pengeroyok > kekuatan_tim:
-        aksi = aksi_move(f"🚨 Musuh {jumlah_pengeroyok} orang, geng kita cuma {kekuatan_tim}. KABURRR!", wajib_aman=True, reasoning="Ganked by premium enemies.", planned="Retreating to reform.")
-        if aksi: return aksi
-        else: smart_print(bot_memory, f"[{BOT_NAME}] 🛑 ZONA AKHIR VIP BUNTU! TAWURAN SINI KAU!")
-
-    if jumlah_pengeroyok >= 2 and jumlah_pengeroyok > kekuatan_tim and my_hp_val < 75:
-        aksi = aksi_move(f"🚨 Kalah jumlah geng & HP Bocor! Mundur taktis dulu!", wajib_aman=True, reasoning="Critical HP and outnumbered.", planned="Avoiding an unnecessary death.")
-        if aksi: return aksi
-
-    # 🔥 SMART COMBAT LOGIC VIP (NINJA ASSASSIN) 🔥
-    if musuh_player_terlemah:
-        target = musuh_player_terlemah
-        hp_musuh = target.get("hp", 100)
-        nama_musuh = target.get("name", "Player")
-        jarak_musuh = target.get("jarak", 0)
-        target_region = target.get("regionId")
-        
-        if tangan_kosong:
-            aksi = aksi_move("Tangan kosong! Melarikan diri cari senjata VIP...", wajib_aman=True, reasoning="Bare-handed in VIP is a death sentence.", planned="Searching for a weapon before retaliating.")
-            if aksi: return aksi
-            return aksi_serang(target.get("id"), "agent", "Cornered in VIP.", "Fighting back with bare fists.")
-
-        if jarak_musuh == 0:
-            if len(teman_sekamar) > 0:
-                smart_print(bot_memory, f"[{BOT_NAME}] 🤝 GANKING VIP! Bantu saudara hajar {nama_musuh}!")
-                return aksi_serang(target.get("id"), "agent", "Found a brother-in-arms.", "Ganking the enemy with the Peaxel Cartel.")
-            elif hp_musuh <= 40:
-                smart_print(bot_memory, f"[{BOT_NAME}] 🦅 VULTURE MODE! Nyampah kill VIP {nama_musuh} (HP:{hp_musuh})!")
-                return aksi_serang(target.get("id"), "agent", "Enemy is weak and dying.", "Ending their suffering to secure the kill.")
-            elif my_hp_val > 85 or hp_musuh <= my_hp_val:
-                smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Eksekusi Taruhan: {nama_musuh} (HP:{hp_musuh})!")
-                return aksi_serang(target.get("id"), "agent", "High stakes mechanical duel.", "Confident in winning this premium 1v1.")
-            else:
-                aksi = aksi_move(f"⚠️ {nama_musuh} lebih sehat (HP:{hp_musuh}). Melipir ah, main aman!", wajib_aman=True, reasoning="Opponent has more HP.", planned="Playing smart, protecting the 100 Moltz entry fee.")
-                if aksi: return aksi
-                smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Mentok! Terpaksa duel mati-matian lawan {nama_musuh} di VIP!")
-                return aksi_serang(target.get("id"), "agent", "Cornered with no way out.", "Fighting to the last drop of blood for 8000 Moltz.")
-
-        elif jarak_musuh > 0:
-            if weapon_range > 0:
-                smart_print(bot_memory, f"[{BOT_NAME}] 🎯 SNIPER VIP! Tembak {nama_musuh} dari jauh!")
-                return aksi_serang(target.get("id"), "agent", "Wielding a ranged weapon.", "Utilizing distance to chip away enemy HP.")
-            else:
-                if hp_musuh <= 30 and my_hp_val > 70:
-                    smart_print(bot_memory, f"[{BOT_NAME}] 🏃‍♂️ Kejar {nama_musuh} yg lagi sekarat!")
-                    return aksi_move("Kejar musuh VIP sekarat", target_pasti=str(target_region).lower(), reasoning="Dying whale is fleeing.", planned="Hunting them down for premium loot.")
-
-    # 🔥 PREMAN PASAR (BARBAR FARMING MONSTER) 🔥
+    # ================== PREMAN PASAR (BARBAR FARMING MONSTER) ==================
     if musuh_monster_terlemah:
         target = musuh_monster_terlemah
         nama_musuh = target.get("name", "Monster")
@@ -687,10 +699,12 @@ def decide_action(state, bot_memory):
                 smart_print(bot_memory, f"[{BOT_NAME}] 🎯 Tembak {nama_musuh} buat farming!")
                 return aksi_serang(target.get("id"), "monster", "Holding a safe ranged weapon.", "Shooting monsters from a safe distance.")
 
+    # ================== SUPPLY CACHE ==================
     if id_supply:
         smart_print(bot_memory, f"[{BOT_NAME}] 📦 Maling kotak Supply Cache VIP!")
         return aksi_interact(id_supply, "Found a free Supply Cache.", "Exploiting for loot capital.")
 
+    # ================== PATROLI TERAKHIR ==================
     aksi_akhir = aksi_move("🕵️ Patroli cari duit & tempat aman VIP...", reasoning="Area is quiet.", planned="Exploring and searching for leftover VIP loot.")
     if aksi_akhir: return aksi_akhir
     
