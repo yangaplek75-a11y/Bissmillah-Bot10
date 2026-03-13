@@ -18,9 +18,11 @@ PRIVATE_KEY = os.environ.get("PRIVATE_KEY", "KOSONG")
 # 🚨 KUNCI AI BUAT NGEJEBOL CAPTCHA DEV 🚨
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "KOSONG") 
 
+# 🔥 UPDATE: PAKAI TOPENG GOOGLE CHROME BIAR GAK KENA 403 FIREWALL 🔥
 HEADERS = {
     "Content-Type": "application/json",
-    "X-API-Key": API_KEY
+    "X-API-Key": API_KEY,
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
 TURN_DELAY = 60  
@@ -94,12 +96,15 @@ def get_waiting_premium_game():
     for attempt in range(1, MAX_PERCOBAAN + 1):
         for url in urls_to_scan:
             try:
-                # 🔥 FIX 1: TAMBAH HEADERS BIAR GAK DIKIRA PENGUSUP 🔥
                 response = requests.get(url, headers=HEADERS, timeout=5) 
                 
-                # 🔥 FIX 2: BONGKAR ERROR GAIB 🔥
-                if response.status_code != 200:
-                    print(f"⚠️ [{BOT_NAME}] Server nolak Radar ({url[-9:]})! Kode: {response.status_code}")
+                # 🔥 UPDATE: PENANGANAN ERROR 403 PINTAR 🔥
+                if response.status_code == 403:
+                    print(f"⚠️ [{BOT_NAME}] Ditahan Firewall (403)! Istirahat 3 detik biar gak dicurigai...")
+                    time.sleep(3)
+                    continue
+                elif response.status_code != 200:
+                    print(f"⚠️ [{BOT_NAME}] Server nolak Radar! Kode: {response.status_code}")
                     continue
                     
                 res = response.json()
@@ -149,10 +154,8 @@ def join_paid_game(game_id, private_key):
         jawaban_ai = None
         challenge_id = None
         
-        # 1. COBA AMBIL SOAL CAPTCHA DARI SERVER
         res_captcha = requests.post(f"{BASE_URL}/games/{game_id}/captcha/challenge", headers=HEADERS)
         
-        # 🔥 PROTOKOL KADAL: Cek apakah Dev mengaktifkan Captcha atau tidak 🔥
         if res_captcha.status_code == 200 and res_captcha.json().get("success"):
             print(f"🚨 [{BOT_NAME}] Room ini dijaga Captcha! Memanggil AI...")
             data_captcha = res_captcha.json()["data"]
@@ -160,13 +163,10 @@ def join_paid_game(game_id, private_key):
             challenge_text = data_captcha["challenge_text"]
             metadata = data_captcha.get("metadata", {})
 
-            # SURUH AI NGEJAWAB SOALNYA
             jawaban_ai = solve_captcha_ai(challenge_text, metadata)
         else:
-            # Kalo server bilang NOT_FOUND atau error, hajar terus tanpa captcha!
             print(f"ℹ️ [{BOT_NAME}] Info: Tidak ada Captcha aktif di room ini. Terobos aja!")
 
-        # 3. AMBIL KONTRAK TIKET
         res_msg = requests.get(f"{BASE_URL}/games/{game_id}/join-paid/message", headers=HEADERS)
         if not res_msg.json().get("success"):
             print(f"⚠️ Gagal dapat kontrak VIP: {res_msg.json().get('error', {}).get('message')}")
@@ -175,13 +175,11 @@ def join_paid_game(game_id, private_key):
         eip712_data = res_msg.json()["data"]
         deadline = eip712_data["message"]["deadline"]
 
-        # 4. TANDA TANGAN KONTRAK
         print(f"✍️ [{BOT_NAME}] Menandatangani transaksi Web3...")
         account = Account.from_key(private_key)
         signed_message = account.sign_typed_data(full_message=eip712_data)
         signature = "0x" + signed_message.signature.hex()
 
-        # 5. SERAHKAN TIKET (DAN CAPTCHA JIKA DEV MINTA)
         payload = {
             "deadline": str(deadline),
             "signature": signature
@@ -986,4 +984,3 @@ if __name__ == "__main__":
         print(f"🛑 [{BOT_NAME}] Operasi VIP selesai. Melapor kembali ke Markas (run_mafia)...")
     except Exception as e:
         print(f"💥 [{BOT_NAME}] Crash sistem: {e}")
-
