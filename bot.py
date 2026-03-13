@@ -5,13 +5,15 @@ import random
 import os
 import json
 import re
+from eth_account import Account
 
-# ================== KONFIGURASI OTOMATIS ==================
+# ================== KONFIGURASI AMAN (RAILWAY MODE) ==================
 BASE_URL = "https://cdn.moltyroyale.com/api"
 
-# 🔥 NGAMBIL DATA DARI ECOSYSTEM.CONFIG.JS PM2 🔥
+# 🔥 NGAMBIL DATA DARI ENVIRONMENT VARIABLES RAILWAY 🔥
 API_KEY = os.environ.get("API_KEY", "KOSONG")
-BOT_NAME = os.environ.get("BOT_NAME", "Bot_Tanpa_Nama")                
+BOT_NAME = os.environ.get("BOT_NAME", "Bot_Tanpa_Nama")
+PRIVATE_KEY = os.environ.get("PRIVATE_KEY", "KOSONG")
 
 HEADERS = {
     "Content-Type": "application/json",
@@ -20,18 +22,39 @@ HEADERS = {
 
 TURN_DELAY = 60  
 
-# ================== SISTEM MEMORI (RECONNECT) ==================
+# ================== SISTEM MEMORI & RECOVERY ==================
 safe_bot_name = re.sub(r'[^a-zA-Z0-9_]', '', BOT_NAME)
-SESSION_FILE = f"session_{safe_bot_name}.json"
+SESSION_FILE = f"session_VIP_{safe_bot_name}.json"
 
 def load_session():
+    # 1. Coba baca dari file lokal (kalau masih ada)
     if os.path.exists(SESSION_FILE):
         try:
             with open(SESSION_FILE, "r") as f:
                 data = json.load(f)
-                return data.get("game_id"), data.get("agent_id")
+                if data.get("game_id") and data.get("agent_id"):
+                    return data.get("game_id"), data.get("agent_id")
         except Exception:
             pass
+
+    # 2. JALUR DARURAT (RECOVERY NYANGKUT)
+    try:
+        print(f"🔍 [{BOT_NAME}] Mengecek riwayat game VIP yang sedang berjalan di server...")
+        res = requests.get(f"{BASE_URL}/accounts/me", headers=HEADERS, timeout=10).json()
+        
+        if res.get("success"):
+            current_games = res.get("data", {}).get("currentGames", [])
+            for g in current_games:
+                # Cari game PAID/PREMIUM yang statusnya belum selesai
+                if g.get("entryType") in ["paid", "premium"] and g.get("gameStatus") in ["waiting", "running"]:
+                    g_id = g.get("gameId")
+                    a_id = g.get("agentId")
+                    print(f"🚨 AHA! Ketemu Tuyul VIP lagi nunggu/main di Game: {g_id[-5:]}")
+                    save_session(g_id, a_id) # Simpan paksa ke memori lokal
+                    return g_id, a_id
+    except Exception as e:
+        print(f"⚠️ Gagal cek server recovery: {e}")
+
     return None, None
 
 def save_session(game_id, agent_id):
@@ -61,15 +84,15 @@ def smart_print(bot_memory, text):
         print(f"[{get_waktu()}] {text}")
         bot_memory["last_log_msg"] = text
 
-# ================== API HANDLERS ==================
-def get_waiting_game():
-    MAX_PERCOBAAN = 5 # 🚀 Percobaan ditambah biar lebih ngotot
-    print(f"🔍 [{get_waktu()}] [{BOT_NAME}] Radar SNIPER Aktif! Mencari room GRATIS...")
+# ================== API HANDLERS (KHUSUS PREMIUM - SNIPER MODE) ==================
+def get_waiting_premium_game():
+    MAX_PERCOBAAN = 10 # 🚀 Tetap ngotot
+    print(f"🔍 [{get_waktu()}] [{BOT_NAME}] Radar VIP SNIPER Aktif! Mencari room PAID/PREMIUM...")
     url = f"{BASE_URL}/games?status=waiting"
     
     for attempt in range(1, MAX_PERCOBAAN + 1):
         try:
-            response = requests.get(url, timeout=5) # 🚀 Timeout dicepetin
+            response = requests.get(url, timeout=5) # 🚀 Timeout dicepetin jadi 5s
             res = response.json()
             
             if res.get("success") and res.get("data"):
@@ -77,8 +100,8 @@ def get_waiting_game():
                     status_game = game.get("status", "").lower()
                     entry_type = game.get("entryType", "").lower()
                     
-                    if status_game == "waiting" and entry_type != "paid":
-                        print(f"✅ [{get_waktu()}] [{BOT_NAME}] Nemu Room: {game.get('name')}")
+                    if status_game == "waiting" and entry_type in ["paid", "premium"]:
+                        print(f"✅ [{get_waktu()}] [{BOT_NAME}] Nemu Room VIP: {game.get('name')}")
                         return game["id"]
         except Exception as e:
             pass
@@ -88,26 +111,48 @@ def get_waiting_game():
             delay = random.uniform(0.2, 0.7) 
             time.sleep(delay) 
             
-    print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room penuh/kosong. Ganti radar!")
+    print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room VIP kosong. Ganti radar!")
     return None
 
-def register_agent(game_id):
-    print(f"🧾 [{BOT_NAME}] Mendobrak masuk...")
+def join_paid_game(game_id, private_key):
+    print(f"📄 [{BOT_NAME}] Meminta kontrak EIP-712 untuk Room VIP...")
     try:
-        res = requests.post(f"{BASE_URL}/games/{game_id}/agents/register", headers=HEADERS, json={"name": BOT_NAME}).json()
+        # 1. Ambil data EIP-712
+        res_msg = requests.get(f"{BASE_URL}/games/{game_id}/join-paid/message", headers=HEADERS)
+        if not res_msg.json().get("success"):
+            print(f"⚠️ Gagal dapat kontrak VIP: {res_msg.json().get('error', {}).get('message')}")
+            return None
+
+        eip712_data = res_msg.json()["data"]
+        deadline = eip712_data["message"]["deadline"]
+
+        # 2. Tanda tangan transaksi Web3
+        print(f"✍️ [{BOT_NAME}] Menandatangi transaksi Web3...")
+        account = Account.from_key(private_key)
+        signed_message = account.sign_typed_data(full_message=eip712_data)
+        signature = "0x" + signed_message.signature.hex()
+
+        # 3. KIRIM PAYLOAD (Ini yang kurang di gambar Bos!)
+        payload = {
+            "deadline": str(deadline),
+            "signature": signature
+        }
+        res_join = requests.post(f"{BASE_URL}/games/{game_id}/join-paid", headers=HEADERS, json=payload)
         
-        if not res.get("success"):
-            pesan_error = str(res.get("error", {}).get("message", "Error misterius"))
-            print(f"⚠️ [{BOT_NAME}] Ditolak masuk: {pesan_error}")
-            return None 
+        if res_join.status_code in [200, 201] and res_join.json().get("success"):
+            print(f"✅ [{BOT_NAME}] BERHASIL DAFTAR VIP! (Tiket dipotong dari SC Wallet)")
             
-        agent_id = res["data"]["id"]
-        print(f"✅ [{BOT_NAME}] Berhasil daftar (ID: {agent_id})")
-        return agent_id
-        
+            # 4. Ambil UUID Agent (Wajib buat main!)
+            me = requests.get(f"{BASE_URL}/accounts/me", headers=HEADERS).json()
+            for g in me.get("data", {}).get("currentGames", []):
+                if g["gameId"] == game_id:
+                    return g["agentId"]
+        else:
+            print(f"❌ Gagal Join: {res_join.json().get('error', {}).get('message')}")
+            
     except Exception as e:
-        print(f"⚠️ [{BOT_NAME}] Error daftar: {e}")
-        return None
+        print(f"💥 Error saat pendaftaran VIP: {e}")
+    return None
 
 def start_game(game_id):
     requests.post(f"{BASE_URL}/games/{game_id}/start", headers=HEADERS)
@@ -115,14 +160,9 @@ def start_game(game_id):
 def get_state(game_id, agent_id):
     try:
         res_raw = requests.get(f"{BASE_URL}/games/{game_id}/agents/{agent_id}/state", headers=HEADERS, timeout=10)
-        
-        if res_raw.status_code in [400, 403, 404]:
-            return "MATI"
-            
+        if res_raw.status_code in [400, 403, 404]: return "MATI"
         res = res_raw.json()
-        if not res.get("success"):
-            return "MATI"
-            
+        if not res.get("success"): return "MATI"
         return res.get("data")
     except requests.exceptions.Timeout:
         return None
@@ -131,11 +171,8 @@ def get_state(game_id, agent_id):
 
 def send_action(game_id, agent_id, action_payload):
     try:
-        if "action" not in action_payload:
-            payload = {"action": action_payload}
-        else:
-            payload = action_payload
-            
+        if "action" not in action_payload: payload = {"action": action_payload}
+        else: payload = action_payload
         res = requests.post(f"{BASE_URL}/games/{game_id}/agents/{agent_id}/action", headers=HEADERS, json=payload, timeout=10).json()
         return res
     except Exception as e:
@@ -216,7 +253,7 @@ def cari_pintu_strategis(pintu_aman, region_dict, hp_sekarat):
     return random.choice(pintu_aman)
 
 # 🔥 FUNGSI PEMBUNGKUS THOUGHT (ENGLISH VERSION) 🔥
-def bungkus_aksi(aksi_dict, reasoning="Securing the perimeter.", planned="Surviving for the Peaxel Cartel."):
+def bungkus_aksi(aksi_dict, reasoning="Securing the VIP perimeter.", planned="Surviving for the Peaxel Cartel in high-stakes."):
     return {
         "action": aksi_dict,
         "thought": {
@@ -357,9 +394,15 @@ def decide_action(state, bot_memory):
                 a['jarak'] = jarak_ke_musuh
                 is_monster = "type" in a and a["type"] in ["monster", "npc"] or any(m in str(a.get("name", "")).lower() for m in ["wolf", "bear", "bandit"])
                 
-                if "peaxel" in str(a.get("name", "")).lower(): teman_player.append(a)
-                elif is_monster: musuh_monster.append(a)
-                else: musuh_player.append(a)
+                # 🔥 LOGIKA MUTLAK ANTI-FRIENDLY FIRE (KARTEL PEAXEL) 🔥
+                nama_agen = str(a.get("name", "")).lower()
+                
+                if "peaxel" in nama_agen or "peacel" in nama_agen:
+                    teman_player.append(a)  # 🤝 MASUK LIST SAUDARA (AMAN)
+                elif is_monster:
+                    musuh_monster.append(a) # 👹 MASUK LIST MONSTER
+                else:
+                    musuh_player.append(a)  # ⚔️ MASUK LIST MUSUH
 
     musuh_player.sort(key=lambda x: x.get("hp", 100))
     musuh_monster.sort(key=lambda x: x.get("hp", 100))
@@ -376,28 +419,28 @@ def decide_action(state, bot_memory):
     barang_di_area = cari_barang_di_tanah(state, region)
     barang_di_area.sort(key=sort_loot_priority, reverse=True)
 
-    # ================== KOMUNIKASI MAFIA (ENGLISH MODE) ==================
+    # ================== KOMUNIKASI MAFIA VIP (ENGLISH MODE) ==================
     if jumlah_pengeroyok > 0 and bot_memory.get("last_talk_region") != current_region_id:
         bot_memory["last_talk_region"] = current_region_id
         bacotan = random.choice([
-            "This area is under Peaxel Cartel control! Back off!",
-            "Non-Peaxel members, run before you get flattened!",
-            "Ganking time! Step into Peaxel territory and prep your coffin!"
+            "This VIP Room belongs to the Peaxel Cartel! Move or die!",
+            "If you're not Cartel, you're just 100 Moltz waiting to burn!",
+            "High stakes, high mortality rate. Step aside!"
         ])
-        smart_print(bot_memory, f"[{BOT_NAME}] 💬 BACOT: {bacotan}")
-        return bungkus_aksi({"type": "talk", "message": bacotan}, "Psychological intimidation.", "Breaking the enemy's morale.")
+        smart_print(bot_memory, f"[{BOT_NAME}] 💬 BACOT VIP: {bacotan}")
+        return bungkus_aksi({"type": "talk", "message": bacotan}, "Psychological intimidation.", "Breaking the enemy's morale in VIP.")
 
     if my_hp_val < 50 and (time.time() - bot_memory.get("last_whisper_time", 0)) > 300: 
         teman_kelihatan = [t for t in teman_player if t.get("id") != my_id]
         if teman_kelihatan:
             teman_target = random.choice(teman_kelihatan)
             bot_memory["last_whisper_time"] = time.time()
-            pesan = f"Bro, I'm at {current_r_name} (HP:{my_hp_val}). Need immediate backup!"
+            pesan = f"Bro, I'm taking heat at {current_r_name} (HP:{my_hp_val}). VIP backup needed!"
             smart_print(bot_memory, f"[{BOT_NAME}] 📻 HT ke {teman_target.get('name')}: {pesan}")
-            return bungkus_aksi({"type": "whisper", "targetId": teman_target.get("id"), "message": pesan}, "Critical situation.", "Requesting backup from the Cartel family.")
+            return bungkus_aksi({"type": "whisper", "targetId": teman_target.get("id"), "message": pesan}, "Critical VIP situation.", "Requesting elite backup from the Cartel family.")
 
     # ================== DAFTAR FUNGSI AKSI (ENGLISH THOUGHTS) ==================
-    def aksi_move(pesan_kustom="🚪 Melipir cari aman...", wajib_aman=False, target_pasti=None, reasoning="Tactical repositioning.", planned="Seeking a tactical advantage."):
+    def aksi_move(pesan_kustom="🚪 Melipir cari aman...", wajib_aman=False, target_pasti=None, reasoning="Tactical VIP repositioning.", planned="Seeking a tactical advantage for the prize pool."):
         if my_ep_val < 1: 
             smart_print(bot_memory, f"[{BOT_NAME}] 💤 EP Habis! Terpaksa tidur dulu (Rest)!")
             return bungkus_aksi({"type": "rest"}, "Extreme fatigue (0 EP).", "Resting to recover stamina.")
@@ -457,24 +500,24 @@ def decide_action(state, bot_memory):
             
         return None 
         
-    def aksi_serang(target_id, target_type, reasoning="Target acquired.", planned="Executing without mercy."): 
+    def aksi_serang(target_id, target_type, reasoning="VIP Target acquired.", planned="Executing without mercy to secure the bag."): 
         if my_ep_val < 2:
             smart_print(bot_memory, f"[{BOT_NAME}] 💤 EP cuma {my_ep_val}! Istirahat (Rest) ambil napas buat nyerang!")
             return bungkus_aksi({"type": "rest"}, "Out of breath before execution.", "Catching breath for a lethal strike.")
         return bungkus_aksi({"type": "attack", "targetId": target_id, "targetType": target_type}, reasoning, planned)
 
-    def aksi_pungut(item_data, reasoning="Valuable loot detected.", planned="Securing assets for the win."): 
+    def aksi_pungut(item_data, reasoning="Valuable premium loot detected.", planned="Securing assets to dominate the VIP arena."): 
         item_id, _ = ekstrak_info_item(item_data)
         return bungkus_aksi({"type": "pickup", "itemId": item_id}, reasoning, planned)
 
-    def aksi_pakai_item(item_id, reasoning="Critical HP level.", planned="Initiating immediate healing."): 
+    def aksi_pakai_item(item_id, reasoning="Critical HP level in VIP.", planned="Initiating immediate healing."): 
         if my_ep_val < 1: return bungkus_aksi({"type": "rest"}, "Too exhausted to use item.", "Taking a brief rest.")
         return bungkus_aksi({"type": "use_item", "itemId": item_id}, reasoning, planned)
 
     def aksi_equip(item_id, reasoning="Better weapon available.", planned="Equipping maximum combat gear."): 
         return bungkus_aksi({"type": "equip", "itemId": item_id}, reasoning, planned)
 
-    def aksi_interact(fasilitas_id, reasoning="Support facility found.", planned="Exploiting facility for advantage."): 
+    def aksi_interact(fasilitas_id, reasoning="Support facility found.", planned="Exploiting facility for VIP advantage."): 
         if my_ep_val < 1: return bungkus_aksi({"type": "rest"}, "Need energy.", "Resting for a moment.")
         return bungkus_aksi({"type": "interact", "interactableId": fasilitas_id}, reasoning, planned)
 
@@ -482,11 +525,10 @@ def decide_action(state, bot_memory):
         smart_print(bot_memory, f"[{BOT_NAME}] 🗑️ {pesan_kustom}")
         return bungkus_aksi({"type": "drop", "itemId": item_id}, reasoning, planned)
 
-
     # ================== INSTING KILAT ==================
     if best_inv_w_id:
         if tangan_kosong or best_inv_w_score > equipped_w_score:
-            smart_print(bot_memory, f"[{BOT_NAME}] ✨ UPGRADE SENJATA! Pakai [{best_inv_w_name}]!")
+            smart_print(bot_memory, f"[{BOT_NAME}] ✨ UPGRADE SENJATA VIP! Pakai [{best_inv_w_name}]!")
             return aksi_equip(best_inv_w_id)
 
     # 🔥 AUTO-CLEAN (SMART INVENTORY) ANTI LOAK 🔥
@@ -499,7 +541,6 @@ def decide_action(state, bot_memory):
             
             if is_valid_weapon(i_name, item):
                 skor_tas = get_weapon_score(i_name)
-                # Kalau senjata di tas skornya SAMA atau LEBIH RENDAH dari senjata di tangan, BUANG!
                 if skor_tas <= skor_maksimal_kita:
                     bot_memory["sampah_memory"].add(i_id) 
                     return aksi_buang(i_id, f"AUTO-CLEAN: Buang {i_name} usang!")
@@ -531,8 +572,8 @@ def decide_action(state, bot_memory):
             for b in barang_di_area:
                 bid, bnm = ekstrak_info_item(b)
                 if is_valid_weapon(bnm, b):
-                    smart_print(bot_memory, f"[{BOT_NAME}] 🚨 DARURAT SENJATA! Sikat {bnm}!")
-                    return aksi_pungut(b, "Need emergency weapon.", "Avoiding a silly bare-handed death.")
+                    smart_print(bot_memory, f"[{BOT_NAME}] 🚨 DARURAT SENJATA VIP! Sikat {bnm}!")
+                    return aksi_pungut(b, "Need emergency weapon.", "Avoiding a silly bare-handed death in VIP.")
 
         for item_terbaik in barang_di_area:
             _, nama_barang = ekstrak_info_item(item_terbaik)
@@ -542,21 +583,19 @@ def decide_action(state, bot_memory):
             if "radio" in nm_low and punya_radio: continue
             if "map" in nm_low and punya_map: continue
                 
-            # 🔥 ANTI RAKUS SENJATA 🔥
             if is_valid_weapon(nama_barang, item_terbaik):
                 skor_barang_ini = get_weapon_score(nama_barang)
-                if skor_barang_ini <= skor_maksimal_kita:
-                    continue
+                if skor_barang_ini <= skor_maksimal_kita: continue
             
             tas_penuh = True if len(inventory) >= 10 else False
             is_koin = True if "moltz" in nm_low or "coin" in nm_low else False
             
             if is_koin:
-                smart_print(bot_memory, f"[{BOT_NAME}] 💰 MATA DUITAN! Ada {nama_barang}, SIKAT!")
-                return aksi_pungut(item_terbaik, "Spotted Moltz treasure.", "Grabbing funds for the win.")
+                smart_print(bot_memory, f"[{BOT_NAME}] 💰 MATA DUITAN VIP! Ada {nama_barang}, SIKAT!")
+                return aksi_pungut(item_terbaik, "Spotted premium Moltz treasure.", "Grabbing funds to secure the 8000 Moltz bag.")
             
             if not tas_penuh:
-                smart_print(bot_memory, f"[{BOT_NAME}] 🎒 Ambil Barang: {nama_barang}!")
+                smart_print(bot_memory, f"[{BOT_NAME}] 🎒 Ambil Barang VIP: {nama_barang}!")
                 return aksi_pungut(item_terbaik)
 
     # ================== CEK COOLDOWN ==================
@@ -566,33 +605,33 @@ def decide_action(state, bot_memory):
     # ================== SURVIVAL & HEALING DEWA ==================
     is_trapped_in_dz = False
     if is_death_zone_now or is_pending_dz_now:
-        aksi_lari = aksi_move("🚨 ZONA MERAH/BAHAYA! Evakuasi Segera!", wajib_aman=True, reasoning="Death Zone detected.", planned="Evacuating immediately.")
+        aksi_lari = aksi_move("🚨 ZONA MERAH/BAHAYA VIP! Evakuasi Segera!", wajib_aman=True, reasoning="VIP Death Zone detected.", planned="Evacuating immediately to protect the ticket.")
         if aksi_lari: return aksi_lari
         else: is_trapped_in_dz = True
 
     batas_heal = 95 if is_trapped_in_dz else 80 
     if my_hp_val < batas_heal:
         if id_medical:
-            smart_print(bot_memory, f"[{BOT_NAME}] 🏥 Pakai Medical Facility!")
-            return aksi_interact(id_medical, "Low HP and medical facility nearby.", "Receiving outpatient care.")
+            smart_print(bot_memory, f"[{BOT_NAME}] 🏥 Pakai Medical Facility VIP!")
+            return aksi_interact(id_medical, "Low HP and medical facility nearby.", "Receiving VIP outpatient care.")
         elif id_bandage:
-            smart_print(bot_memory, f"[{BOT_NAME}] 🚑 Suntik Obat! (HP:{my_hp_val})")
+            smart_print(bot_memory, f"[{BOT_NAME}] 🚑 Suntik Obat VIP! (HP:{my_hp_val})")
             return aksi_pakai_item(id_bandage)
         elif id_potion:
-            smart_print(bot_memory, f"[{BOT_NAME}] 🚑 Minum Potion! (HP:{my_hp_val})")
+            smart_print(bot_memory, f"[{BOT_NAME}] 🚑 Minum Potion VIP! (HP:{my_hp_val})")
             return aksi_pakai_item(id_potion)
 
     # 🔥 PROTOKOL MENTAL BAJA (ANTI BUNUH DIRI) 🔥
     if jumlah_pengeroyok >= 3 and jumlah_pengeroyok > kekuatan_tim:
-        aksi = aksi_move(f"🚨 Musuh {jumlah_pengeroyok} orang, geng kita cuma {kekuatan_tim}. KABURRR!", wajib_aman=True, reasoning="Ganked by enemies.", planned="Retreating to reform.")
+        aksi = aksi_move(f"🚨 Musuh {jumlah_pengeroyok} orang, geng kita cuma {kekuatan_tim}. KABURRR!", wajib_aman=True, reasoning="Ganked by premium enemies.", planned="Retreating to reform.")
         if aksi: return aksi
-        else: smart_print(bot_memory, f"[{BOT_NAME}] 🛑 ZONA AKHIR BUNTU! TAWURAN SINI KAU!")
+        else: smart_print(bot_memory, f"[{BOT_NAME}] 🛑 ZONA AKHIR VIP BUNTU! TAWURAN SINI KAU!")
 
     if jumlah_pengeroyok >= 2 and jumlah_pengeroyok > kekuatan_tim and my_hp_val < 75:
         aksi = aksi_move(f"🚨 Kalah jumlah geng & HP Bocor! Mundur taktis dulu!", wajib_aman=True, reasoning="Critical HP and outnumbered.", planned="Avoiding an unnecessary death.")
         if aksi: return aksi
 
-    # 🔥 SMART COMBAT LOGIC (NINJA ASSASSIN) 🔥
+    # 🔥 SMART COMBAT LOGIC VIP (NINJA ASSASSIN) 🔥
     if musuh_player_terlemah:
         target = musuh_player_terlemah
         hp_musuh = target.get("hp", 100)
@@ -601,34 +640,34 @@ def decide_action(state, bot_memory):
         target_region = target.get("regionId")
         
         if tangan_kosong:
-            aksi = aksi_move("Tangan kosong! Melarikan diri cari senjata...", wajib_aman=True, reasoning="Bare-handed is a death sentence.", planned="Searching for a weapon before retaliating.")
+            aksi = aksi_move("Tangan kosong! Melarikan diri cari senjata VIP...", wajib_aman=True, reasoning="Bare-handed in VIP is a death sentence.", planned="Searching for a weapon before retaliating.")
             if aksi: return aksi
-            return aksi_serang(target.get("id"), "agent", "Cornered.", "Fighting back with bare fists.")
+            return aksi_serang(target.get("id"), "agent", "Cornered in VIP.", "Fighting back with bare fists.")
 
         if jarak_musuh == 0:
             if len(teman_sekamar) > 0:
-                smart_print(bot_memory, f"[{BOT_NAME}] 🤝 GANKING MAFIA! Bantu saudara hajar {nama_musuh}!")
+                smart_print(bot_memory, f"[{BOT_NAME}] 🤝 GANKING VIP! Bantu saudara hajar {nama_musuh}!")
                 return aksi_serang(target.get("id"), "agent", "Found a brother-in-arms.", "Ganking the enemy with the Peaxel Cartel.")
             elif hp_musuh <= 40:
-                smart_print(bot_memory, f"[{BOT_NAME}] 🦅 VULTURE MODE! Nyampah kill {nama_musuh} (HP:{hp_musuh})!")
-                return aksi_serang(target.get("id"), "agent", "Enemy is weak and dying.", "Ending their suffering.")
+                smart_print(bot_memory, f"[{BOT_NAME}] 🦅 VULTURE MODE! Nyampah kill VIP {nama_musuh} (HP:{hp_musuh})!")
+                return aksi_serang(target.get("id"), "agent", "Enemy is weak and dying.", "Ending their suffering to secure the kill.")
             elif my_hp_val > 85 or hp_musuh <= my_hp_val:
-                smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Eksekusi {nama_musuh} (HP:{hp_musuh})!")
-                return aksi_serang(target.get("id"), "agent", "Mechanical duel.", "Confident in winning this 1v1.")
+                smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Eksekusi Taruhan: {nama_musuh} (HP:{hp_musuh})!")
+                return aksi_serang(target.get("id"), "agent", "High stakes mechanical duel.", "Confident in winning this premium 1v1.")
             else:
-                aksi = aksi_move(f"⚠️ {nama_musuh} lebih sehat (HP:{hp_musuh}). Melipir ah, main aman!", wajib_aman=True, reasoning="Opponent has more HP.", planned="Playing smart, not dying foolishly.")
+                aksi = aksi_move(f"⚠️ {nama_musuh} lebih sehat (HP:{hp_musuh}). Melipir ah, main aman!", wajib_aman=True, reasoning="Opponent has more HP.", planned="Playing smart, protecting the 100 Moltz entry fee.")
                 if aksi: return aksi
-                smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Mentok! Terpaksa duel mati-matian lawan {nama_musuh}!")
-                return aksi_serang(target.get("id"), "agent", "Cornered with no way out.", "Fighting to the last drop of blood.")
+                smart_print(bot_memory, f"[{BOT_NAME}] ⚔️ Mentok! Terpaksa duel mati-matian lawan {nama_musuh} di VIP!")
+                return aksi_serang(target.get("id"), "agent", "Cornered with no way out.", "Fighting to the last drop of blood for 8000 Moltz.")
 
         elif jarak_musuh > 0:
             if weapon_range > 0:
-                smart_print(bot_memory, f"[{BOT_NAME}] 🎯 SNIPER! Tembak {nama_musuh} dari jauh!")
+                smart_print(bot_memory, f"[{BOT_NAME}] 🎯 SNIPER VIP! Tembak {nama_musuh} dari jauh!")
                 return aksi_serang(target.get("id"), "agent", "Wielding a ranged weapon.", "Utilizing distance to chip away enemy HP.")
             else:
                 if hp_musuh <= 30 and my_hp_val > 70:
                     smart_print(bot_memory, f"[{BOT_NAME}] 🏃‍♂️ Kejar {nama_musuh} yg lagi sekarat!")
-                    return aksi_move("Kejar musuh sekarat", target_pasti=str(target_region).lower(), reasoning="Dying enemy is fleeing.", planned="Hunting them down.")
+                    return aksi_move("Kejar musuh VIP sekarat", target_pasti=str(target_region).lower(), reasoning="Dying whale is fleeing.", planned="Hunting them down for premium loot.")
 
     # 🔥 PREMAN PASAR (BARBAR FARMING MONSTER) 🔥
     if musuh_monster_terlemah:
@@ -640,7 +679,7 @@ def decide_action(state, bot_memory):
         if my_hp_val > 60 and jumlah_pengeroyok == 0 and not is_death_zone_now and not is_pending_dz_now:
             if jarak_musuh == 0:
                 smart_print(bot_memory, f"[{BOT_NAME}] 🥊 PREMAN PASAR! Bantai {nama_musuh}!")
-                return aksi_serang(target.get("id"), "monster", "Room clear of other players.", "Farming monsters for Coins.")
+                return aksi_serang(target.get("id"), "monster", "Room clear of players.", "Farming monsters for initial Coins.")
             elif jarak_musuh > 0 and weapon_range == 0:
                 smart_print(bot_memory, f"[{BOT_NAME}] 🏃‍♂️ Samperin {nama_musuh} buat dipalak!")
                 return aksi_move("Maju ke ruangan monster", target_pasti=str(target_region).lower(), reasoning="Monster in the adjacent room.", planned="Approaching to mine some coins.")
@@ -649,20 +688,19 @@ def decide_action(state, bot_memory):
                 return aksi_serang(target.get("id"), "monster", "Holding a safe ranged weapon.", "Shooting monsters from a safe distance.")
 
     if id_supply:
-        smart_print(bot_memory, f"[{BOT_NAME}] 📦 Maling kotak Supply Cache!")
+        smart_print(bot_memory, f"[{BOT_NAME}] 📦 Maling kotak Supply Cache VIP!")
         return aksi_interact(id_supply, "Found a free Supply Cache.", "Exploiting for loot capital.")
 
-    aksi_akhir = aksi_move("🕵️ Patroli cari duit & tempat aman...", reasoning="Area is quiet.", planned="Exploring and searching for leftover loot.")
+    aksi_akhir = aksi_move("🕵️ Patroli cari duit & tempat aman VIP...", reasoning="Area is quiet.", planned="Exploring and searching for leftover VIP loot.")
     if aksi_akhir: return aksi_akhir
     
     if my_ep_val < 1: return bungkus_aksi({"type": "rest"}, "Energy depleted.", "Waiting for stamina recovery.")
-    return bungkus_aksi({"type": "explore"}, "No way out.", "Looking for items on the floor.")
+    return bungkus_aksi({"type": "explore"}, "No way out.", "Looking for items on the VIP floor.")
 
 # ================== RADAR & LAPORAN ==================
 def print_live_status(state, game_id):
     self_data = state.get("self", {})
     region = state.get("currentRegion", {})
-    
     hp = self_data.get('hp', '?')
     ep = self_data.get('ep', '?') 
     tas = len(self_data.get('inventory', []))
@@ -670,71 +708,49 @@ def print_live_status(state, game_id):
     
     senjata_info = "Tangan Kosong 👊"
     equipped_item = self_data.get("equippedWeapon") or self_data.get("weapon")
-    
     if equipped_item:
         _, nm = ekstrak_info_item(equipped_item)
-        if "fist" not in nm.lower() and "none" not in nm.lower(): 
-            senjata_info = f"{nm} 🗡️"
+        if "fist" not in nm.lower() and "none" not in nm.lower(): senjata_info = f"{nm} 🗡️"
             
-    print(f"\n[🎮 GAME {game_id[-5:]}] [{BOT_NAME}] | HP:{hp} | EP:{ep} | Tas:{tas}/10 | Senj: {senjata_info} | Lokasi:{loc}")
+    print(f"\n[💎 GAME VIP {game_id[-5:]}] [{BOT_NAME}] | HP:{hp} | EP:{ep} | Tas:{tas}/10 | Senj: {senjata_info} | Lokasi:{loc}")
 
 def cetak_laporan_kemenangan(state):
     self_data = state.get("self", {})
     hp_akhir = self_data.get("hp", "?")
     inventory = self_data.get("inventory", [])
-    
-    print("\n" + "🏆"*25)
-    print("  🎉🔥 CHAMPION! WINNER WINNER CHICKEN DINNER! 🔥🎉")
-    print("🏆"*25)
-    print(f"  👑 Sang Penguasa : {BOT_NAME.upper()}")
-    print(f"  ❤️ Sisa HP       : {hp_akhir}/100")
-    print(f"  🎒 Isi Tas       : {len(inventory)}/10 Barang")
+    print("\n" + "💎"*25)
+    print("  🎉🔥 JACKPOT VIP! 8000 MOLTZ + 160 CROSS! 🔥🎉")
+    print("💎"*25)
+    print(f"  👑 Sultan : {BOT_NAME.upper()}")
+    print(f"  ❤️ Sisa HP: {hp_akhir}/100")
     print("==================================================\n")
 
 def cetak_laporan_forensik(bot_memory, current_state):
     print("\n" + "="*50)
-    print(f"💀 LAPORAN FORENSIK KEMATIAN {BOT_NAME} 💀")
+    print(f"💀 LAPORAN FORENSIK KEMATIAN VIP (MOLTZ HANGUS) 💀")
     print("="*50)
     
     state_sumber = current_state if isinstance(current_state, dict) else bot_memory.get("last_state", {})
-    
-    if not state_sumber:
-        print("❓ Penyebab Kematian: Data menguap diculik server (Misterius).")
-        print("="*50 + "\n")
-        return
+    if not state_sumber: return
         
     self_data = state_sumber.get("self", {})
     region = state_sumber.get("currentRegion", {})
-    alasan_resmi = False
     
-    if "deathReason" in self_data:
-        print(f"🔪 Alasan Resmi  : {self_data['deathReason']}")
-        alasan_resmi = True
-        
     if "killerName" in self_data or "killer" in self_data:
-        print(f"🩸 Tersangka     : {self_data.get('killerName', self_data.get('killer', 'Unknown'))}")
-        alasan_resmi = True
-        
-    print(f"\n🕵️ TKP : {region.get('name', '?')}")
-    
-    if not alasan_resmi:
-        if region.get("isDeathZone", False): 
-            print("⚠️ Kesimpulan Utama: 99% MATI KEPANGGANG BADAI DEATH ZONE! 🌪️🔥")
-        else: 
-            print("⚠️ Kesimpulan Utama: Gugur di medan perang.")
-            
+        print(f"🩸 Tersangka: {self_data.get('killerName', self_data.get('killer', 'Unknown'))}")
+    print(f"🕵️ TKP: {region.get('name', '?')}")
     print("="*50 + "\n")
 
-# ================== MAIN LOOP ==================
+# ================== MAIN PROCESS (ONE-SHOT + FAST SNIPER) ==================
 def main():
-    if API_KEY == "KOSONG" or API_KEY.startswith("ISI_"): 
-        fatal(f"[{BOT_NAME}] API KEY kosong! Pastikan di-set di ecosystem.config.js!")
+    if API_KEY == "KOSONG" or PRIVATE_KEY.startswith("0x_PRIVATE_KEY"): 
+        fatal(f"[{BOT_NAME}] Konfigurasi belum diisi! Edit file bot_premium.py dulu!")
         
     game_id, agent_id = load_session()
     resume_berhasil = False
     
     if game_id and agent_id:
-        print(f"🔄 [{get_waktu()}] [{BOT_NAME}] Sesi ditemukan! Coba RECONNECT ke game sebelumnya...")
+        print(f"🔄 [{get_waktu()}] [{BOT_NAME}] Sesi VIP ditemukan! Coba RECONNECT...")
         state = get_state(game_id, agent_id)
         
         if state and state != "MATI":
@@ -742,13 +758,13 @@ def main():
             status_game = state.get("gameStatus", "").lower()
             
             if status_game not in ["finished", "cancelled"] and is_alive:
-                print(f"✅ [{get_waktu()}] [{BOT_NAME}] RECONNECT BERHASIL! Melanjutkan pertempuran...")
+                print(f"✅ [{get_waktu()}] [{BOT_NAME}] RECONNECT BERHASIL! Agent siap...")
                 resume_berhasil = True
             else:
-                print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Game lama sudah usai/Bot mati. Menghapus sesi...")
+                print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Game VIP sudah usai. Menghapus sesi...")
                 clear_session()
         else:
-            print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room lama tidak valid/kadaluarsa. Menghapus sesi...")
+            print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room VIP kadaluarsa. Menghapus sesi...")
             clear_session()
             
     if not resume_berhasil:
@@ -756,65 +772,54 @@ def main():
         game_id = None
         
         while not agent_id:
-            game_id = get_waiting_game()
-            
+            game_id = get_waiting_premium_game()
             if not game_id:
                 # 🔥 Kalau room habis, tunggu bentar aja (0.5 - 1.2 detik) langsung refresh! 🔥
                 delay = random.uniform(0.5, 1.2)
-                print(f"🔄 [{BOT_NAME}] Re-scan radar cepat dalam {delay:.1f} detik...\n")
+                print(f"🔄 [{BOT_NAME}] Re-scan radar VIP cepat dalam {delay:.1f} detik...\n")
                 time.sleep(delay)
                 continue
                 
-            agent_id = register_agent(game_id)
-            
+            # 🔥 JOIN PAID GAME (MEMBAYAR TIKET WEB3) 🔥
+            agent_id = join_paid_game(game_id, PRIVATE_KEY)
             if not agent_id:
-                # 🔥 Kalau keduluan bot lain, LANGSUNG HAJAR DETIK ITU JUGA (0.1 - 0.3 detik)! 🔥
+                # 🔥 Kalau keduluan atau ditolak, hajar ulang kilat! 🔥
                 delay = random.uniform(0.1, 0.3)
-                print(f"⏩ [{BOT_NAME}] Keduluan! Langsung serobot room lain ({delay:.1f}s)....\n")
-                time.sleep(delay)
+                print(f"⏩ [{BOT_NAME}] Keduluan / Gagal Sign VIP! Langsung serobot room lain ({delay:.1f}s)....\n")
+                time.sleep(delay) 
 
         save_session(game_id, agent_id)
         start_game(game_id)
         
-        print(f"⏳ [{get_waktu()}] [{BOT_NAME}] Menunggu game dimulai...")
-        
-        while True:
-            state = get_state(game_id, agent_id)
-            if state == "MATI":
-                print(f"❌ [{BOT_NAME}] Game keburu dihapus/error sebelum mulai!")
-                clear_session()
-                sys.exit(1)
-                
-            if state and state.get("gameStatus", "").lower() not in ["waiting", "created", "pending", ""]:
-                print(f"🔥 [{get_waktu()}] [{BOT_NAME}] GAME DIMULAI! MELEPAS BOT 🔥\n")
-                break
-                
-            time.sleep(0.5) 
+    # 🔥 RUANG TUNGGU (LOBBY) WAJIB UNTUK SEMUA 🔥
+    print(f"⏳ [{get_waktu()}] [{BOT_NAME}] Standby di Lobby VIP... Menunggu Match Dimulai...")
+    while True:
+        state = get_state(game_id, agent_id)
+        if state == "MATI":
+            print(f"❌ [{BOT_NAME}] Game dibatalkan/error!")
+            clear_session()
+            return # Langsung Stop
+            
+        status_now = state.get("gameStatus", "").lower() if state else ""
+        if status_now not in ["waiting", "created", "pending", ""]:
+            print(f"🔥 [{get_waktu()}] [{BOT_NAME}] VIP MATCH RESMI DIMULAI! GASPOL! 🔥\n")
+            break
+            
+        time.sleep(1.5) 
 
     bot_memory = {
-        "visited_path": [], 
-        "dz_memory": set(), 
-        "pdz_memory": set(), 
-        "taunted_agents": set(),
-        "sampah_memory": set(), 
-        "last_region_id": None, 
-        "last_state": None, 
-        "group1_cd_end": 0, 
-        "last_print_time": 0, 
-        "last_log_msg": "",
-        "last_hp": 100,
-        "last_talk_region": None,
-        "last_whisper_time": 0
+        "visited_path": [], "dz_memory": set(), "pdz_memory": set(), "taunted_agents": set(),
+        "sampah_memory": set(), "last_region_id": None, "last_state": None, "group1_cd_end": 0, 
+        "last_print_time": 0, "last_log_msg": "", "last_hp": 100, "last_talk_region": None, "last_whisper_time": 0
     }
 
     while True:
         try:
             state = get_state(game_id, agent_id)
-            
             if state == "MATI":
                 cetak_laporan_forensik(bot_memory, state)
                 clear_session()
-                break
+                break # KELUAR DARI LOOP GAME
                 
             if not state:
                 time.sleep(1)
@@ -825,15 +830,13 @@ def main():
             if not state.get("self", {}).get("isAlive"):
                 cetak_laporan_forensik(bot_memory, state)
                 clear_session()
-                break
+                break # KELUAR DARI LOOP GAME
                 
             if state.get("gameStatus") == "finished":
-                if state.get("self", {}).get("isAlive"): 
-                    cetak_laporan_kemenangan(state)
-                else: 
-                    print(f"\n🏁 [{get_waktu()}] [{BOT_NAME}] MATCH SELESAI! GAMEOVER (Nyaris menang)!")
+                if state.get("self", {}).get("isAlive"): cetak_laporan_kemenangan(state)
+                else: print(f"\n🏁 [{get_waktu()}] [{BOT_NAME}] MATCH VIP SELESAI!")
                 clear_session()
-                break
+                break # KELUAR DARI LOOP GAME
             
             if time.time() - bot_memory["last_print_time"] >= 20:
                 print_live_status(state, game_id)
@@ -848,21 +851,17 @@ def main():
                     continue
                     
                 act_type = action_payload.get("action", {}).get("type", "") if "action" in action_payload else action_payload.get("type", "")
-                
                 res = send_action(game_id, agent_id, action_payload)
                 
                 if res and res.get("success"):
-                    # NOTE: "rest" punya Cooldown 1 menit jadi tidak masuk fast-track
-                    if act_type in ["pickup", "equip", "talk", "whisper", "drop"]: 
-                        time.sleep(0.2) 
+                    if act_type in ["pickup", "equip", "talk", "whisper", "drop"]: time.sleep(0.2) 
                     else: 
                         bot_memory["group1_cd_end"] = time.time() + TURN_DELAY
                         time.sleep(1) 
                 else: 
                     if res and "error" in res:
                         err_msg = res.get("error", {}).get("message", "Error nggak jelas")
-                        if "cooldown" not in err_msg.lower(): 
-                            print(f"⚠️ [{BOT_NAME}] Server nolak aksi '{act_type}': {err_msg}")
+                        if "cooldown" not in err_msg.lower(): print(f"⚠️ [{BOT_NAME}] Server VIP nolak aksi '{act_type}': {err_msg}")
                     time.sleep(1) 
             else: 
                 time.sleep(1)
@@ -870,10 +869,14 @@ def main():
         except Exception:
             time.sleep(1)
 
+# 🔥 PENTING: DIBIKIN AGAR HANYA JALAN 1 KALI 🔥
+# (Obat tidur dihapus karena sudah di-handle oleh run_mafia.py)
 if __name__ == "__main__":
-    while True: 
-        try:
-            main()
-        except Exception as e:
-            print(f"💥 [{BOT_NAME}] Crash sistem: {e}. Reboot dalam 5 detik...")
-            time.sleep(5)
+    print("="*50)
+    print("💎 MENYALAKAN MESIN SUPER PEAXEL VIP 💎")
+    print("="*50)
+    try:
+        main()
+        print(f"🛑 [{BOT_NAME}] Operasi VIP selesai. Melapor kembali ke Markas (run_mafia)...")
+    except Exception as e:
+        print(f"💥 [{BOT_NAME}] Crash sistem: {e}")
