@@ -18,11 +18,15 @@ PRIVATE_KEY = os.environ.get("PRIVATE_KEY", "KOSONG")
 # 🚨 KUNCI AI BUAT NGEJEBOL CAPTCHA DEV 🚨
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "KOSONG") 
 
-# 🔥 PAKAI TOPENG GOOGLE CHROME BIAR GAK KENA 403 FIREWALL 🔥
+# 🔥 UPDATE: PELUMAS SILUMAN FULL BROWSER BIAR LOLOS CLOUDFLARE 🔥
 HEADERS = {
     "Content-Type": "application/json",
     "X-API-Key": API_KEY,
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": "https://www.moltyroyale.com",
+    "Referer": "https://www.moltyroyale.com/"
 }
 
 TURN_DELAY = 60  
@@ -98,9 +102,11 @@ def get_waiting_premium_game():
             try:
                 response = requests.get(url, headers=HEADERS, timeout=5) 
                 
+                # 🔥 UPDATE: MUNDUR TAKTIS JANGKA PANJANG JIKA KENA 403 🔥
                 if response.status_code == 403:
-                    print(f"⚠️ [{BOT_NAME}] Ditahan Firewall (403)! Istirahat 3 detik biar gak dicurigai...")
-                    time.sleep(3)
+                    waktu_tidur = random.randint(30, 60)
+                    print(f"⚠️ [{BOT_NAME}] Ditahan Firewall (403)! IP dicurigai nyepam. Ngopi dulu {waktu_tidur} detik...")
+                    time.sleep(waktu_tidur)
                     continue
                 elif response.status_code != 200:
                     print(f"⚠️ [{BOT_NAME}] Server nolak Radar! Kode: {response.status_code}")
@@ -121,7 +127,8 @@ def get_waiting_premium_game():
                 print(f"💥 Error Radar: {e}")
             
         if attempt < MAX_PERCOBAAN:
-            delay = random.uniform(0.5, 1.2) 
+            # 🔥 UPDATE: JEDA RADAR DIPERLAMBAT BIAR GAK KENA DDOS DETECT 🔥
+            delay = random.uniform(3.0, 6.0) 
             time.sleep(delay) 
             
     print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room VIP kosong. Ganti radar!")
@@ -135,7 +142,6 @@ def solve_captcha_ai(challenge_text, metadata):
         return "Aku gak tau"
         
     try:
-        # 🔥 FIX 100% AMPUH: Pakai model gemini-pro klasik yang didukung SEMUA API Key!
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
         prompt = f"Solve this captcha directly. Return ONLY the final answer string with no extra text or explanation. Captcha: {challenge_text}. Metadata: {metadata}"
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
@@ -176,7 +182,6 @@ def join_paid_game(game_id, private_key):
 
             jawaban_ai = solve_captcha_ai(challenge_text, metadata)
             
-            # 🔥 PROTOKOL ANTI-MINUS SCORE 🔥
             if jawaban_ai in ["Error AI", "Aku gak tau", "", None]:
                 print(f"🛑 [{BOT_NAME}] OTAK AI GAGAL BERFUNGSI! Membatalkan pendaftaran daripada dapat skor minus (-5) dari Dev!")
                 time.sleep(3)
@@ -907,15 +912,16 @@ def main():
         while not agent_id:
             game_id = get_waiting_premium_game()
             if not game_id:
-                delay = random.uniform(0.5, 1.2)
-                print(f"🔄 [{BOT_NAME}] Re-scan radar VIP cepat dalam {delay:.1f} detik...\n")
+                # 🔥 JEDA MENCARI ROOM DIPERLAMBAT BIAR AMAN DARI BANNED IP 🔥
+                delay = random.uniform(2.5, 5.5)
+                print(f"🔄 [{BOT_NAME}] Re-scan radar VIP aman dalam {delay:.1f} detik...\n")
                 time.sleep(delay)
                 continue
                 
             agent_id = join_paid_game(game_id, PRIVATE_KEY)
             if not agent_id:
-                delay = random.uniform(0.1, 0.3)
-                print(f"⏩ [{BOT_NAME}] Keduluan / Gagal Sign VIP! Langsung serobot room lain ({delay:.1f}s)....\n")
+                delay = random.uniform(1.1, 2.5)
+                print(f"⏩ [{BOT_NAME}] Keduluan / Batal Sign VIP! Coba room lain ({delay:.1f}s)....\n")
                 time.sleep(delay) 
 
         save_session(game_id, agent_id)
