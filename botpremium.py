@@ -18,7 +18,7 @@ PRIVATE_KEY = os.environ.get("PRIVATE_KEY", "KOSONG")
 # 🚨 KUNCI AI BUAT NGEJEBOL CAPTCHA DEV 🚨
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "KOSONG") 
 
-# 🔥 UPDATE: PELUMAS SILUMAN FULL BROWSER BIAR LOLOS CLOUDFLARE 🔥
+# 🔥 PAKAI TOPENG GOOGLE CHROME BIAR GAK KENA 403 FIREWALL 🔥
 HEADERS = {
     "Content-Type": "application/json",
     "X-API-Key": API_KEY,
@@ -102,7 +102,6 @@ def get_waiting_premium_game():
             try:
                 response = requests.get(url, headers=HEADERS, timeout=5) 
                 
-                # 🔥 UPDATE: MUNDUR TAKTIS JANGKA PANJANG JIKA KENA 403 🔥
                 if response.status_code == 403:
                     waktu_tidur = random.randint(30, 60)
                     print(f"⚠️ [{BOT_NAME}] Ditahan Firewall (403)! IP dicurigai nyepam. Ngopi dulu {waktu_tidur} detik...")
@@ -127,37 +126,56 @@ def get_waiting_premium_game():
                 print(f"💥 Error Radar: {e}")
             
         if attempt < MAX_PERCOBAAN:
-            # 🔥 UPDATE: JEDA RADAR DIPERLAMBAT BIAR GAK KENA DDOS DETECT 🔥
             delay = random.uniform(3.0, 6.0) 
             time.sleep(delay) 
             
     print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room VIP kosong. Ganti radar!")
     return None
 
-# 🔥 AI CAPTCHA SOLVER 🔥
+# 🔥 AI CAPTCHA SOLVER (PROTOKOL SAPU JAGAT) 🔥
 def solve_captcha_ai(challenge_text, metadata):
     print(f"🤖 [{BOT_NAME}] Menganalisa Captcha dari Dev: {challenge_text}")
     if GEMINI_API_KEY == "KOSONG" or not GEMINI_API_KEY:
         print("⚠️ GEMINI_API_KEY belum diisi! AI tidak bisa menjawab Captcha!")
         return "Aku gak tau"
         
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
-        prompt = f"Solve this captcha directly. Return ONLY the final answer string with no extra text or explanation. Captcha: {challenge_text}. Metadata: {metadata}"
-        payload = {"contents": [{"parts": [{"text": prompt}]}]}
-        
-        res = requests.post(url, headers={"Content-Type": "application/json"}, json=payload).json()
-        
-        if "error" in res:
-            print(f"💥 Error dari Gemini API: {res['error']}")
-            return "Error AI"
+    # 🔥 Daftar Semua Model Google. Kalau satu gagal, coba yang lain! 🔥
+    models_to_try = [
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-1.0-pro",
+        "gemini-1.5-pro",
+        "gemini-pro"
+    ]
+    
+    for model_name in models_to_try:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+            prompt = f"Solve this captcha directly. Return ONLY the final answer string with no extra text or explanation. Captcha: {challenge_text}. Metadata: {metadata}"
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
             
-        jawaban = res.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '').strip()
-        print(f"✅ [{BOT_NAME}] Jawaban Captcha Ditemukan: {jawaban}")
-        return jawaban
-    except Exception as e:
-        print(f"💥 Gagal memanggil AI Gemini: {e}")
-        return "Error AI"
+            res = requests.post(url, headers={"Content-Type": "application/json"}, json=payload).json()
+            
+            if "error" in res:
+                if res["error"].get("code") == 404:
+                    print(f"🔄 Model [{model_name}] tidak ditemukan di API Key Bos. Ganti model...")
+                    continue # Lanjut coba model berikutnya di daftar
+                else:
+                    print(f"💥 Error dari Gemini API [{model_name}]: {res['error']}")
+                    continue # Lanjut coba model berikutnya juga
+                
+            jawaban = res.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '').strip()
+            if jawaban:
+                print(f"✅ [{BOT_NAME}] Otak [{model_name}] Berhasil Menjawab: {jawaban}")
+                return jawaban
+                
+        except Exception as e:
+            print(f"💥 Gagal memanggil AI [{model_name}]: {e}")
+            continue
+            
+    # Kalau semua model udah dicoba dan gagal semua:
+    print("🛑 SEMUA MODEL GOOGLE GAGAL DIKSES! Pastikan API Key dari Google AI Studio sudah aktif.")
+    return "Error AI"
 
 def join_paid_game(game_id, private_key):
     print(f"📄 [{BOT_NAME}] Memulai Protokol Penembusan Room VIP (Mode Fleksibel)...")
@@ -912,7 +930,6 @@ def main():
         while not agent_id:
             game_id = get_waiting_premium_game()
             if not game_id:
-                # 🔥 JEDA MENCARI ROOM DIPERLAMBAT BIAR AMAN DARI BANNED IP 🔥
                 delay = random.uniform(2.5, 5.5)
                 print(f"🔄 [{BOT_NAME}] Re-scan radar VIP aman dalam {delay:.1f} detik...\n")
                 time.sleep(delay)
