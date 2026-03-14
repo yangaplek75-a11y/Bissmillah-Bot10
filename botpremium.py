@@ -135,8 +135,8 @@ def solve_captcha_ai(challenge_text, metadata):
         return "Aku gak tau"
         
     try:
-        # 🔥 FIX: Ganti nama model ke yang terbaru biar nggak kena 404 dari Google
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
+        # 🔥 FIX 100% AMPUH: Pakai model gemini-pro klasik yang didukung SEMUA API Key!
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
         prompt = f"Solve this captcha directly. Return ONLY the final answer string with no extra text or explanation. Captcha: {challenge_text}. Metadata: {metadata}"
         payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
@@ -160,7 +160,6 @@ def join_paid_game(game_id, private_key):
         challenge_id = None
         url_captcha = f"{BASE_URL}/games/{game_id}/captcha/challenge"
         
-        # 1. Minta soal Captcha
         res_captcha = requests.post(url_captcha, headers=HEADERS, json={})
         
         if res_captcha.status_code == 404:
@@ -168,7 +167,6 @@ def join_paid_game(game_id, private_key):
         if res_captcha.status_code == 404:
             res_captcha = requests.get(url_captcha, headers=HEADERS)
         
-        # 2. Proses Captcha kalau ada
         if res_captcha.status_code == 200 and res_captcha.json().get("success"):
             print(f"🚨 [{BOT_NAME}] Room ini dijaga Captcha! Memanggil AI...")
             data_captcha = res_captcha.json()["data"]
@@ -179,7 +177,6 @@ def join_paid_game(game_id, private_key):
             jawaban_ai = solve_captcha_ai(challenge_text, metadata)
             
             # 🔥 PROTOKOL ANTI-MINUS SCORE 🔥
-            # Kalau Gemini gagal jawab, JANGAN NEKAT masuk! Nanti dikasih score -5 sama Dev!
             if jawaban_ai in ["Error AI", "Aku gak tau", "", None]:
                 print(f"🛑 [{BOT_NAME}] OTAK AI GAGAL BERFUNGSI! Membatalkan pendaftaran daripada dapat skor minus (-5) dari Dev!")
                 time.sleep(3)
@@ -194,7 +191,6 @@ def join_paid_game(game_id, private_key):
             else:
                 print(f"ℹ️ [{BOT_NAME}] Mencoba menerobos tanpa Captcha...")
 
-        # 3. Ambil Kontrak Tiket
         res_msg = requests.get(f"{BASE_URL}/games/{game_id}/join-paid/message", headers=HEADERS)
         if not res_msg.json().get("success"):
             print(f"⚠️ [{BOT_NAME}] Gagal dapat kontrak VIP: {res_msg.json().get('error', {}).get('message')}")
@@ -208,7 +204,6 @@ def join_paid_game(game_id, private_key):
         signed_message = account.sign_typed_data(full_message=eip712_data)
         signature = "0x" + signed_message.signature.hex()
 
-        # 4. Serahkan Jawaban
         payload = {
             "deadline": str(deadline),
             "signature": signature
