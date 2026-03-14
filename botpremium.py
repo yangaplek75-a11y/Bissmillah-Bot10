@@ -132,7 +132,7 @@ def get_waiting_premium_game():
     print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room VIP kosong. Ganti radar!")
     return None
 
-# 🔥 AI CAPTCHA SOLVER (MENGGUNAKAN GROQ AI - LLAMA 3) 🔥
+# 🔥 AI CAPTCHA SOLVER (MESIN GROQ SAPU JAGAT) 🔥
 def solve_captcha_ai(challenge_text, metadata):
     print(f"🤖 [{BOT_NAME}] Menganalisa Captcha dari Dev: {challenge_text}")
     
@@ -142,32 +142,48 @@ def solve_captcha_ai(challenge_text, metadata):
         
     prompt = f"Solve this captcha directly and concisely. You MUST answer the captcha AND follow the metadata instruction in a single short sentence. Captcha: '{challenge_text}'. Metadata instruction: '{metadata}'"
     
-    try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": "llama3-8b-8192", 
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.1,
-            "max_tokens": 50
-        }
-        
-        res = requests.post(url, headers=headers, json=payload, timeout=10)
-        
-        if res.status_code == 200:
-            jawaban = res.json()["choices"][0]["message"]["content"].strip()
-            print(f"✅ [{BOT_NAME}] GROQ AI Berhasil Menjawab: {jawaban}")
-            return jawaban
-        else:
-            print(f"💥 Error dari Groq API: {res.text}")
-            return "Error AI"
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    # 🔥 DAFTAR MESIN GROQ TERBARU (Kalau satu pensiun, coba yang lain) 🔥
+    models_to_try = [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "llama3-70b-8192",
+        "mixtral-8x7b-32768",
+        "gemma2-9b-it"
+    ]
+    
+    for model_name in models_to_try:
+        try:
+            payload = {
+                "model": model_name, 
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 50
+            }
             
-    except Exception as e:
-        print(f"💥 Gagal memanggil GROQ AI: {e}")
-        return "Error AI"
+            res = requests.post(url, headers=headers, json=payload, timeout=10)
+            
+            if res.status_code == 200:
+                jawaban = res.json()["choices"][0]["message"]["content"].strip()
+                print(f"✅ [{BOT_NAME}] GROQ AI [{model_name}] Berhasil Menjawab: {jawaban}")
+                return jawaban
+            else:
+                # Cek kalau modelnya error/decommissioned, print biar tahu lalu lanjut model berikutnya
+                error_msg = res.json().get("error", {}).get("message", res.text)
+                print(f"🔄 GROQ AI [{model_name}] gagal ({error_msg}). Mencoba model lain...")
+                continue
+                
+        except Exception as e:
+            print(f"💥 Gagal memanggil GROQ AI [{model_name}]: {e}")
+            continue
+            
+    print("🛑 SEMUA MESIN GROQ GAGAL ATAU DECOMMISSIONED!")
+    return "Error AI"
 
 def join_paid_game(game_id, private_key):
     print(f"📄 [{BOT_NAME}] Memulai Protokol Penembusan Room VIP (Mode Groq AI)...")
@@ -642,7 +658,7 @@ def decide_action(state, bot_memory):
 
     def aksi_interact(fasilitas_id, reasoning="Support facility found.", planned="Exploiting facility for VIP advantage."): 
         if my_ep_val < 1: return bungkus_aksi({"type": "rest"}, "Need energy.", "Resting for a moment.")
-        return bungkus_aksi({"type": "interact", "interactableId": facility_id}, reasoning, planned)
+        return bungkus_aksi({"type": "interact", "interactableId": fasilitas_id}, reasoning, planned)
 
     def aksi_buang(item_id, pesan_kustom="Membuang barang...", reasoning="Inventory management.", planned="Dropping obsolete items for efficiency."): 
         smart_print(bot_memory, f"[{BOT_NAME}] 🗑️ {pesan_kustom}")
