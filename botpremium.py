@@ -157,9 +157,19 @@ def join_paid_game(game_id, private_key):
     try:
         jawaban_ai = None
         challenge_id = None
+        url_captcha = f"{BASE_URL}/games/{game_id}/captcha/challenge"
         
-        # 🔥 UPDATE MUTLAK: TAMBAHKAN json={} AGAR REQUEST TIDAK DITOLAK SERVER 🔥
-        res_captcha = requests.post(f"{BASE_URL}/games/{game_id}/captcha/challenge", headers=HEADERS, json={})
+        # 🔥 PROTOKOL MULTI-TEMBUS: Nyoba segala cara buat manggil soal dari Dev 🔥
+        # Percobaan 1: POST dengan JSON Kosong
+        res_captcha = requests.post(url_captcha, headers=HEADERS, json={})
+        
+        # Percobaan 2: Kalau 404, coba POST tanpa body data sama sekali
+        if res_captcha.status_code == 404:
+            res_captcha = requests.post(url_captcha, headers=HEADERS)
+            
+        # Percobaan 3: Kalau masih 404, jangan-jangan Dev-nya typo dan harusnya GET!
+        if res_captcha.status_code == 404:
+            res_captcha = requests.get(url_captcha, headers=HEADERS)
         
         if res_captcha.status_code == 200 and res_captcha.json().get("success"):
             print(f"🚨 [{BOT_NAME}] Room ini dijaga Captcha! Memanggil AI...")
@@ -170,9 +180,15 @@ def join_paid_game(game_id, private_key):
 
             jawaban_ai = solve_captcha_ai(challenge_text, metadata)
         else:
-            # 🔥 UPDATE MUTLAK: TAMPILKAN ISI ERROR JIKA SERVER GAGAL NGASIH SOAL 🔥
             print(f"ℹ️ [{BOT_NAME}] Info: Gagal ambil soal Captcha. Server membalas: {res_captcha.status_code} - {res_captcha.text}")
-            print(f"ℹ️ [{BOT_NAME}] Mencoba menerobos tanpa Captcha...")
+            
+            # 🔥 MUNDUR TAKTIS (ANTI-BAN): Kalau Dev-nya error (404/500), KITA BATALIN JOIN BIAR GAK NYEPAM!
+            if res_captcha.status_code in [404, 500, 502, 503]:
+                print(f"🛑 [{BOT_NAME}] DEV LAGI ERROR! Daripada kita spam dan kena Banned, mending mundur dulu 10 detik!")
+                time.sleep(10)
+                return None
+            else:
+                print(f"ℹ️ [{BOT_NAME}] Mencoba menerobos tanpa Captcha...")
 
         res_msg = requests.get(f"{BASE_URL}/games/{game_id}/join-paid/message", headers=HEADERS)
         if not res_msg.json().get("success"):
@@ -207,8 +223,7 @@ def join_paid_game(game_id, private_key):
                 if g["gameId"] == game_id:
                     return g["agentId"]
         else:
-            # 🔥 UPDATE MUTLAK: TAMPILKAN ERROR ASLI DARI DEV 🔥
-            print(f"❌ [{BOT_NAME}] Gagal Join (Mungkin Captcha Salah/Saldo Kurang): {res_join.text}")
+            print(f"❌ [{BOT_NAME}] Gagal Join: {res_join.text}")
             
     except Exception as e:
         print(f"💥 [{BOT_NAME}] Error saat penembusan VIP: {e}")
