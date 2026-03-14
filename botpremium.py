@@ -5,7 +5,6 @@ import random
 import os
 import json
 import re
-import urllib.parse
 from eth_account import Account
 
 # ================== KONFIGURASI AMAN (RAILWAY MODE) ==================
@@ -16,8 +15,8 @@ API_KEY = os.environ.get("API_KEY", "KOSONG")
 BOT_NAME = os.environ.get("BOT_NAME", "Bot_Tanpa_Nama")
 PRIVATE_KEY = os.environ.get("PRIVATE_KEY", "KOSONG")
 
-# 🚨 KUNCI AI GEMINI (OPSIONAL KARENA SEKARANG ADA BACKUP AI) 🚨
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "KOSONG") 
+# 🚨 KUNCI AI GROQ (PENGGANTI GEMINI YANG PELIT) 🚨
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "KOSONG") 
 
 # 🔥 PAKAI TOPENG GOOGLE CHROME BIAR GAK KENA 403 FIREWALL 🔥
 HEADERS = {
@@ -133,51 +132,45 @@ def get_waiting_premium_game():
     print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room VIP kosong. Ganti radar!")
     return None
 
-# 🔥 AI CAPTCHA SOLVER (MULTIPLE AI BACKUP) 🔥
+# 🔥 AI CAPTCHA SOLVER (MENGGUNAKAN GROQ AI - LLAMA 3) 🔥
 def solve_captcha_ai(challenge_text, metadata):
     print(f"🤖 [{BOT_NAME}] Menganalisa Captcha dari Dev: {challenge_text}")
     
-    # Prompt diperbarui agar AI ngerti perintah aneh Dev di Metadata
+    if GROQ_API_KEY == "KOSONG" or not GROQ_API_KEY:
+        print("⚠️ GROQ_API_KEY belum diisi! AI tidak bisa menjawab Captcha!")
+        return "Aku gak tau"
+        
     prompt = f"Solve this captcha directly and concisely. You MUST answer the captcha AND follow the metadata instruction in a single short sentence. Captcha: '{challenge_text}'. Metadata instruction: '{metadata}'"
     
-    jawaban_final = None
-
-    # 1. Coba Pakai Gemini Dulu (Siapa tahu kuncinya lagi waras)
-    if GEMINI_API_KEY != "KOSONG" and GEMINI_API_KEY:
-        models_to_try = ["gemini-1.5-flash-latest", "gemini-pro"]
-        for model_name in models_to_try:
-            try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-                payload = {"contents": [{"parts": [{"text": prompt}]}]}
-                res = requests.post(url, headers={"Content-Type": "application/json"}, json=payload).json()
-                
-                if "error" not in res:
-                    jawaban_final = res.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '').strip()
-                    if jawaban_final:
-                        print(f"✅ [{BOT_NAME}] Gemini [{model_name}] Berhasil Menjawab: {jawaban_final}")
-                        return jawaban_final
-            except:
-                pass
-
-    # 2. JALUR TIKUS: AI GRATISAN TANPA API KEY (Kalo Google nge-troll terus)
-    print(f"🔄 [{BOT_NAME}] Google Error! Beralih ke AI Cadangan (Tanpa API Key)...")
     try:
-        safe_prompt = urllib.parse.quote(prompt)
-        url_free_ai = f"https://text.pollinations.ai/prompt/{safe_prompt}"
-        res_free = requests.get(url_free_ai, timeout=15)
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "llama3-8b-8192", 
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "max_tokens": 50
+        }
         
-        if res_free.status_code == 200 and res_free.text:
-            jawaban_final = res_free.text.strip()
-            print(f"✅ [{BOT_NAME}] AI Cadangan Berhasil Menjawab: {jawaban_final}")
-            return jawaban_final
+        res = requests.post(url, headers=headers, json=payload, timeout=10)
+        
+        if res.status_code == 200:
+            jawaban = res.json()["choices"][0]["message"]["content"].strip()
+            print(f"✅ [{BOT_NAME}] GROQ AI Berhasil Menjawab: {jawaban}")
+            return jawaban
+        else:
+            print(f"💥 Error dari Groq API: {res.text}")
+            return "Error AI"
+            
     except Exception as e:
-        print(f"💥 AI Cadangan juga ikut gagal: {e}")
-
-    print("🛑 SEMUA OTAK AI GAGAL BERFUNGSI!")
-    return "Error AI"
+        print(f"💥 Gagal memanggil GROQ AI: {e}")
+        return "Error AI"
 
 def join_paid_game(game_id, private_key):
-    print(f"📄 [{BOT_NAME}] Memulai Protokol Penembusan Room VIP (Mode Fleksibel)...")
+    print(f"📄 [{BOT_NAME}] Memulai Protokol Penembusan Room VIP (Mode Groq AI)...")
     try:
         jawaban_ai = None
         challenge_id = None
@@ -649,7 +642,7 @@ def decide_action(state, bot_memory):
 
     def aksi_interact(fasilitas_id, reasoning="Support facility found.", planned="Exploiting facility for VIP advantage."): 
         if my_ep_val < 1: return bungkus_aksi({"type": "rest"}, "Need energy.", "Resting for a moment.")
-        return bungkus_aksi({"type": "interact", "interactableId": fasilitas_id}, reasoning, planned)
+        return bungkus_aksi({"type": "interact", "interactableId": facility_id}, reasoning, planned)
 
     def aksi_buang(item_id, pesan_kustom="Membuang barang...", reasoning="Inventory management.", planned="Dropping obsolete items for efficiency."): 
         smart_print(bot_memory, f"[{BOT_NAME}] 🗑️ {pesan_kustom}")
