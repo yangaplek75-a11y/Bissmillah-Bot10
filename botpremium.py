@@ -5,6 +5,7 @@ import random
 import os
 import json
 import re
+import urllib.parse
 from eth_account import Account
 
 # ================== KONFIGURASI AMAN (RAILWAY MODE) ==================
@@ -15,7 +16,7 @@ API_KEY = os.environ.get("API_KEY", "KOSONG")
 BOT_NAME = os.environ.get("BOT_NAME", "Bot_Tanpa_Nama")
 PRIVATE_KEY = os.environ.get("PRIVATE_KEY", "KOSONG")
 
-# 🚨 KUNCI AI BUAT NGEJEBOL CAPTCHA DEV 🚨
+# 🚨 KUNCI AI GEMINI (OPSIONAL KARENA SEKARANG ADA BACKUP AI) 🚨
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "KOSONG") 
 
 # 🔥 PAKAI TOPENG GOOGLE CHROME BIAR GAK KENA 403 FIREWALL 🔥
@@ -132,49 +133,47 @@ def get_waiting_premium_game():
     print(f"⚠️ [{get_waktu()}] [{BOT_NAME}] Room VIP kosong. Ganti radar!")
     return None
 
-# 🔥 AI CAPTCHA SOLVER (PROTOKOL SAPU JAGAT) 🔥
+# 🔥 AI CAPTCHA SOLVER (MULTIPLE AI BACKUP) 🔥
 def solve_captcha_ai(challenge_text, metadata):
     print(f"🤖 [{BOT_NAME}] Menganalisa Captcha dari Dev: {challenge_text}")
-    if GEMINI_API_KEY == "KOSONG" or not GEMINI_API_KEY:
-        print("⚠️ GEMINI_API_KEY belum diisi! AI tidak bisa menjawab Captcha!")
-        return "Aku gak tau"
-        
-    # 🔥 Daftar Semua Model Google. Kalau satu gagal, coba yang lain! 🔥
-    models_to_try = [
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-8b",
-        "gemini-1.0-pro",
-        "gemini-1.5-pro",
-        "gemini-pro"
-    ]
     
-    for model_name in models_to_try:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-            prompt = f"Solve this captcha directly. Return ONLY the final answer string with no extra text or explanation. Captcha: {challenge_text}. Metadata: {metadata}"
-            payload = {"contents": [{"parts": [{"text": prompt}]}]}
-            
-            res = requests.post(url, headers={"Content-Type": "application/json"}, json=payload).json()
-            
-            if "error" in res:
-                if res["error"].get("code") == 404:
-                    print(f"🔄 Model [{model_name}] tidak ditemukan di API Key Bos. Ganti model...")
-                    continue # Lanjut coba model berikutnya di daftar
-                else:
-                    print(f"💥 Error dari Gemini API [{model_name}]: {res['error']}")
-                    continue # Lanjut coba model berikutnya juga
+    # Prompt diperbarui agar AI ngerti perintah aneh Dev di Metadata
+    prompt = f"Solve this captcha directly and concisely. You MUST answer the captcha AND follow the metadata instruction in a single short sentence. Captcha: '{challenge_text}'. Metadata instruction: '{metadata}'"
+    
+    jawaban_final = None
+
+    # 1. Coba Pakai Gemini Dulu (Siapa tahu kuncinya lagi waras)
+    if GEMINI_API_KEY != "KOSONG" and GEMINI_API_KEY:
+        models_to_try = ["gemini-1.5-flash-latest", "gemini-pro"]
+        for model_name in models_to_try:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                res = requests.post(url, headers={"Content-Type": "application/json"}, json=payload).json()
                 
-            jawaban = res.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '').strip()
-            if jawaban:
-                print(f"✅ [{BOT_NAME}] Otak [{model_name}] Berhasil Menjawab: {jawaban}")
-                return jawaban
-                
-        except Exception as e:
-            print(f"💥 Gagal memanggil AI [{model_name}]: {e}")
-            continue
-            
-    # Kalau semua model udah dicoba dan gagal semua:
-    print("🛑 SEMUA MODEL GOOGLE GAGAL DIKSES! Pastikan API Key dari Google AI Studio sudah aktif.")
+                if "error" not in res:
+                    jawaban_final = res.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '').strip()
+                    if jawaban_final:
+                        print(f"✅ [{BOT_NAME}] Gemini [{model_name}] Berhasil Menjawab: {jawaban_final}")
+                        return jawaban_final
+            except:
+                pass
+
+    # 2. JALUR TIKUS: AI GRATISAN TANPA API KEY (Kalo Google nge-troll terus)
+    print(f"🔄 [{BOT_NAME}] Google Error! Beralih ke AI Cadangan (Tanpa API Key)...")
+    try:
+        safe_prompt = urllib.parse.quote(prompt)
+        url_free_ai = f"https://text.pollinations.ai/prompt/{safe_prompt}"
+        res_free = requests.get(url_free_ai, timeout=15)
+        
+        if res_free.status_code == 200 and res_free.text:
+            jawaban_final = res_free.text.strip()
+            print(f"✅ [{BOT_NAME}] AI Cadangan Berhasil Menjawab: {jawaban_final}")
+            return jawaban_final
+    except Exception as e:
+        print(f"💥 AI Cadangan juga ikut gagal: {e}")
+
+    print("🛑 SEMUA OTAK AI GAGAL BERFUNGSI!")
     return "Error AI"
 
 def join_paid_game(game_id, private_key):
@@ -201,7 +200,7 @@ def join_paid_game(game_id, private_key):
             jawaban_ai = solve_captcha_ai(challenge_text, metadata)
             
             if jawaban_ai in ["Error AI", "Aku gak tau", "", None]:
-                print(f"🛑 [{BOT_NAME}] OTAK AI GAGAL BERFUNGSI! Membatalkan pendaftaran daripada dapat skor minus (-5) dari Dev!")
+                print(f"🛑 [{BOT_NAME}] Membatalkan pendaftaran daripada dapat skor minus (-5) dari Dev!")
                 time.sleep(3)
                 return None
                 
