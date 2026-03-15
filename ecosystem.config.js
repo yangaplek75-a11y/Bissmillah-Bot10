@@ -1,44 +1,26 @@
 module.exports = {
   apps: [
     { 
-      name: "VIP-Max", script: "botpremium.py", interpreter: "python3",
-      env: { 
-        BOT_NAME: "Peaxel20", 
-        API_KEY: process.env.API_20, 
-        PRIVATE_KEY: process.env.PRIV_20 
-      }
+      name: "Tuyul-1", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel20", API_KEY: "mr_live_lj0Yp3v-AJfuZMmcwU-FwcwCl8ohDaaL" }
     },
     { 
-      name: "VIP-Lite", script: "botpremium.py", interpreter: "python3",
-      env: { 
-        BOT_NAME: "Peaxel21", 
-        API_KEY: process.env.API_21, 
-        PRIVATE_KEY: process.env.PRIV_21 
-      }
+      name: "Tuyul-2", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel21", API_KEY: "mr_live_DWajUEXWttFywZG3v4lPV-vsHKHq4MER" }
     },
     { 
-      name: "VIP-Turbo", script: "botpremium.py", interpreter: "python3",
-      env: { 
-        BOT_NAME: "Peaxel22", 
-        API_KEY: process.env.API_22, 
-        PRIVATE_KEY: process.env.PRIV_22 
-      }
+      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel22", API_KEY: "mr_live_HwU-27OJh63ywdj2zjcKdf2V7tKcAZZM" }
     },
     { 
-      name: "VIP-Dex", script: "botpremium.py", interpreter: "python3",
-      env: { 
-        BOT_NAME: "Peaxel23", 
-        API_KEY: process.env.API_23, 
-        PRIVATE_KEY: process.env.PRIV_23 
-      }
+      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel23", API_KEY: "mr_live_kbQwJ1CH0Zj3sCYjCDXMx2TyC6lHGyXk" }
     },
     { 
-      name: "VIP-Solar", script: "botpremium.py", interpreter: "python3",
-      env: { 
-        BOT_NAME: "Peaxel24", 
-        API_KEY: process.env.API_24, 
-        PRIVATE_KEY: process.env.PRIV_24 
-      }
-    }
+      name: "Tuyul-3", script: "bot.py", interpreter: "python3",
+      env: { BOT_NAME: "peaxel24", API_KEY: "mr_live_r1dScqyFvFTXySE9tcvlxmi0y8v-Pm2f" }
+    },
+    // ... DAN SETERUSNYA SAMPAI BOT KE-15 ...
+    // Tinggal copy-paste blok di atas ke bawah
   ]
 };
